@@ -506,30 +506,37 @@ async function nextJob(){
   }
   bc();
   if(state.isRunning){
-    /* Smart backoff: if job got 0 profiles, LinkedIn is likely rate-limiting.
-       Wait progressively longer to let the rate limit cool down. */
     var jobProfiles=job.profilesScraped||0;
-    var delay;
-    if(jobProfiles===0){
-      /* Count consecutive zero-profile jobs */
-      var zeroStreak=0;
-      for(var zi=state.currentJobIndex;zi>=0;zi--){
-        if(state.jobs[zi].profilesScraped===0)zeroStreak++;
-        else break;
-      }
-      /* Backoff: 30s, 45s, 60s... up to 2 min */
-      delay=Math.min(30000+zeroStreak*15000,120000);
-      addLog('warn','Rate limit detected ('+zeroStreak+' consecutive zero jobs). Waiting '+Math.round(delay/1000)+'s before next job...');
-    }else if(consecutiveEmpty>=3){
-      /* Job got some profiles but ended with empty pages — partial rate limit */
-      delay=rDelay(20000,40000);
-      addLog('info','Partial rate limit (ended with empty pages). Waiting '+Math.round(delay/1000)+'s before next job...');
+    var wasRateLimited=job.status&&(job.status.indexOf('Rate Limited')===0||(job.status.indexOf('Partial')===0&&job.status.indexOf('rate limited')!==-1));
+    var retries=job._retries||0;
+    var maxRetries=3;
+    if(wasRateLimited&&retries<maxRetries){
+      /* RETRY: reset job to Pending, wait for rate limit to lift, then re-run it */
+      job._retries=retries+1;
+      var cooldown=60000+retries*30000;/* 60s, 90s, 120s */
+      job.status='Waiting (retry '+(retries+1)+'/'+maxRetries+' in '+Math.round(cooldown/1000)+'s)';
+      addLog('warn','Job '+(state.currentJobIndex+1)+' rate limited — retrying in '+Math.round(cooldown/1000)+'s (attempt '+(retries+1)+'/'+maxRetries+')');
+      bc();
+      await new Promise(function(r){setTimeout(r,cooldown);});
+      /* Reset job status and re-run by decrementing index so nextJob picks it up again */
+      job.status='Pending';job.profilesScraped=0;
+      state.currentJobIndex--;
+      nextJob();
     }else{
-      /* Normal: 8-15s between successful jobs */
-      delay=rDelay(8000,15000);
+      /* Normal flow or max retries exhausted */
+      var delay;
+      if(jobProfiles===0){
+        delay=rDelay(30000,45000);
+        addLog('warn','Job got 0 profiles (retries exhausted). Waiting '+Math.round(delay/1000)+'s...');
+      }else if(job.status&&job.status.indexOf('Partial')===0){
+        delay=rDelay(20000,40000);
+        addLog('info','Partial scrape. Waiting '+Math.round(delay/1000)+'s before next job...');
+      }else{
+        delay=rDelay(8000,15000);
+      }
+      await new Promise(function(r){setTimeout(r,delay);});
+      nextJob();
     }
-    await new Promise(function(r){setTimeout(r,delay);});
-    nextJob();
   }
 }
 

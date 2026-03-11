@@ -463,6 +463,7 @@ function renderJobs(elId,jobs,activeIdx){
     var sc='pending',st=j.status||'Pending';
     if(j.status&&j.status.indexOf('Done')===0)sc='done';
     else if(j.status&&j.status.indexOf('Rate Limited')===0)sc='ratelimited';
+    else if(j.status&&j.status.indexOf('Waiting')===0)sc='waiting';
     else if(j.status&&j.status.indexOf('Partial')===0){sc=j.status.indexOf('rate limited')!==-1?'ratelimited':'partial';}
     else if(j.status==='Running'||i===activeIdx){sc='running';st='Running';}
     else if(j.status&&(j.status.indexOf('Error')===0||j.status==='Stopped'))sc='error';
