@@ -479,6 +479,12 @@ async function nextJob(){
     try{await chrome.tabs.remove(tab.id);}catch(e){}
     if(totalR>2500&&allP.length>=2500){
       job.status='Done ('+allP.length+' of '+totalR+', LinkedIn limit)';
+    }else if(allP.length===0&&totalR>0){
+      job.status='Rate Limited (0/'+Math.min(totalR,2500)+' — too many requests)';
+    }else if(allP.length===0&&totalR===0){
+      job.status='Rate Limited (0 — too many requests)';
+    }else if(totalR>0&&allP.length<Math.min(totalR,2500)&&consecutiveEmpty>=3){
+      job.status='Partial ('+allP.length+'/'+Math.min(totalR,2500)+' — rate limited)';
     }else if(totalR>0&&allP.length<Math.min(totalR,2500)&&allP.length>0){
       job.status='Partial ('+allP.length+'/'+Math.min(totalR,2500)+')';
     }else if(totalR===0&&consecutiveEmpty>=5&&allP.length>0){
@@ -511,16 +517,16 @@ async function nextJob(){
         if(state.jobs[zi].profilesScraped===0)zeroStreak++;
         else break;
       }
-      /* Exponential backoff: 60s, 120s, 180s... up to 5 min */
-      delay=Math.min(zeroStreak*60000,300000);
+      /* Backoff: 30s, 45s, 60s... up to 2 min */
+      delay=Math.min(30000+zeroStreak*15000,120000);
       addLog('warn','Rate limit detected ('+zeroStreak+' consecutive zero jobs). Waiting '+Math.round(delay/1000)+'s before next job...');
     }else if(consecutiveEmpty>=3){
       /* Job got some profiles but ended with empty pages — partial rate limit */
-      delay=rDelay(30000,60000);
+      delay=rDelay(20000,40000);
       addLog('info','Partial rate limit (ended with empty pages). Waiting '+Math.round(delay/1000)+'s before next job...');
     }else{
-      /* Normal: 10-20s between successful jobs */
-      delay=rDelay(10000,20000);
+      /* Normal: 8-15s between successful jobs */
+      delay=rDelay(8000,15000);
     }
     await new Promise(function(r){setTimeout(r,delay);});
     nextJob();

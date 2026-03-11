@@ -462,7 +462,8 @@ function renderJobs(elId,jobs,activeIdx){
     var j=jobs[i],li=document.createElement('li');li.className='job-item';
     var sc='pending',st=j.status||'Pending';
     if(j.status&&j.status.indexOf('Done')===0)sc='done';
-    else if(j.status&&j.status.indexOf('Partial')===0)sc='partial';
+    else if(j.status&&j.status.indexOf('Rate Limited')===0)sc='ratelimited';
+    else if(j.status&&j.status.indexOf('Partial')===0){sc=j.status.indexOf('rate limited')!==-1?'ratelimited':'partial';}
     else if(j.status==='Running'||i===activeIdx){sc='running';st='Running';}
     else if(j.status&&(j.status.indexOf('Error')===0||j.status==='Stopped'))sc='error';
     var nm=j.tabName||('Job '+(i+1));
