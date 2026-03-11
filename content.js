@@ -439,20 +439,34 @@
     return qsAll(document, SELECTORS.resultItem);
   }
 
-  /* ── Wait for result cards to appear in the DOM ── */
+  /* ── Wait for result cards with ACTUAL profile data to appear ── */
   async function waitForResults(timeoutMs) {
     timeoutMs = timeoutMs || 20000;
     var start = Date.now();
     var checkInterval = 500;
     while (Date.now() - start < timeoutMs) {
-      var items = qsAll(document, SELECTORS.resultItem);
-      /* Also check for profile links as a fallback signal */
+      /* Check for profile links — the real signal that data is loaded (not just skeleton cards) */
       var links = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
-      if (items.length >= 3 || links.length >= 3) {
-        console.log('[Ortus] waitForResults: found ' + items.length + ' items, ' + links.length + ' links after ' + (Date.now() - start) + 'ms');
-        /* Wait a bit more for remaining items to render */
+      var items = qsAll(document, SELECTORS.resultItem);
+      /* Also check that at least some items have a name inside them */
+      var itemsWithNames = 0;
+      for (var ci = 0; ci < Math.min(items.length, 10); ci++) {
+        var nameEl = qs(items[ci], SELECTORS.profileName);
+        if (nameEl && getText(nameEl).length > 1) itemsWithNames++;
+      }
+      if (links.length >= 3 && itemsWithNames >= 3) {
+        console.log('[Ortus] waitForResults: found ' + items.length + ' items (' + itemsWithNames + ' with names), ' + links.length + ' links after ' + (Date.now() - start) + 'ms');
         await sleep(1500);
         return true;
+      }
+      /* Skeleton detection: items exist but no names/links = LinkedIn soft rate limit */
+      if (items.length >= 10 && links.length === 0 && (Date.now() - start) > 10000) {
+        console.log('[Ortus] waitForResults: SKELETON CARDS — ' + items.length + ' items but 0 profile links. LinkedIn soft rate limit.');
+        return false;
+      }
+      if (items.length >= 10 && itemsWithNames === 0 && (Date.now() - start) > 10000) {
+        console.log('[Ortus] waitForResults: EMPTY CARDS — ' + items.length + ' items but 0 with names. LinkedIn soft rate limit.');
+        return false;
       }
       /* Check for "No results" or error/block states */
       var body = document.body ? document.body.innerText : '';
@@ -478,8 +492,10 @@
     }
     /* Log what the page actually shows for debugging */
     var debugTitle = document.title || '(no title)';
+    var debugItems = qsAll(document, SELECTORS.resultItem).length;
+    var debugLinks = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]').length;
     var debugBody = (document.body ? document.body.innerText : '').substring(0, 300);
-    console.log('[Ortus] waitForResults: timed out after ' + timeoutMs + 'ms — title: "' + debugTitle + '", body: "' + debugBody + '"');
+    console.log('[Ortus] waitForResults: timed out after ' + timeoutMs + 'ms — ' + debugItems + ' items, ' + debugLinks + ' links, title: "' + debugTitle + '", body: "' + debugBody + '"');
     return false;
   }
 
@@ -498,6 +514,16 @@
 
     /* Harvest initial */
     var initial = harvestVisible();
+    if (initial.length === 0) {
+      /* Log diagnostic info when harvest returns nothing */
+      var diagItems = qsAll(document, SELECTORS.resultItem);
+      var diagLinks = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
+      console.log('[Ortus] harvestVisible returned 0 — DOM has ' + diagItems.length + ' items, ' + diagLinks.length + ' profile links');
+      if (diagItems.length > 0) {
+        var sampleHtml = diagItems[0].innerHTML.substring(0, 300);
+        console.log('[Ortus] First item HTML: ' + sampleHtml);
+      }
+    }
     for (var i = 0; i < initial.length; i++) {
       var key = initial[i].profileUrl || initial[i].name;
       allProfiles.set(key, initial[i]);
@@ -662,7 +688,9 @@
         return true;
       case 'waitForResults':
         waitForResults(msg.timeout || 20000).then(function(found) {
-          sendResponse({ found: found, itemCount: qsAll(document, SELECTORS.resultItem).length });
+          var items = qsAll(document, SELECTORS.resultItem);
+          var links = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
+          sendResponse({ found: found, itemCount: items.length, linkCount: links.length });
         });
         return true;
       case 'goToNextPage':

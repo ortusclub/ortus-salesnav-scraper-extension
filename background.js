@@ -613,7 +613,12 @@ async function waitContentReady(tid,timeout){
   timeout=timeout||15000;
   try{
     var r=await tabMsg(tid,{action:'waitForResults',timeout:timeout});
-    if(r&&r.found){addLog('info','Content ready: '+r.itemCount+' items');return true;}
+    if(r&&r.found){addLog('info','Content ready: '+r.itemCount+' items, '+r.linkCount+' links');return true;}
+    /* Skeleton/empty cards = soft rate limit */
+    if(r&&r.itemCount>0&&r.linkCount===0){
+      addLog('warn','Skeleton cards detected: '+r.itemCount+' items but 0 profile links — LinkedIn soft rate limit');
+      return false;
+    }
     /* Try to get the page title/URL for debugging */
     try{
       var t=await chrome.tabs.get(tid);
