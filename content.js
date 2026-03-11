@@ -454,15 +454,32 @@
         await sleep(1500);
         return true;
       }
-      /* Check for "No results" or error states */
+      /* Check for "No results" or error/block states */
       var body = document.body ? document.body.innerText : '';
       if (body.indexOf('No results found') !== -1 || body.indexOf('0 results') !== -1) {
         console.log('[Ortus] waitForResults: "No results" detected');
         return false;
       }
+      /* Detect LinkedIn rate limiting / block pages */
+      var pageTitle = document.title || '';
+      var isBlocked = body.indexOf('something went wrong') !== -1
+        || body.indexOf('too many requests') !== -1
+        || body.indexOf('unusual activity') !== -1
+        || body.indexOf('Let\'s do a quick security check') !== -1
+        || body.indexOf('CAPTCHA') !== -1
+        || pageTitle.indexOf('Security Verification') !== -1
+        || pageTitle.indexOf('Authwall') !== -1
+        || (body.indexOf('Sign in') !== -1 && body.indexOf('Sales Navigator') === -1 && body.length < 2000);
+      if (isBlocked) {
+        console.log('[Ortus] waitForResults: BLOCKED/RATE-LIMITED — title: "' + pageTitle + '", body snippet: "' + body.substring(0, 200) + '"');
+        return false;
+      }
       await sleep(checkInterval);
     }
-    console.log('[Ortus] waitForResults: timed out after ' + timeoutMs + 'ms');
+    /* Log what the page actually shows for debugging */
+    var debugTitle = document.title || '(no title)';
+    var debugBody = (document.body ? document.body.innerText : '').substring(0, 300);
+    console.log('[Ortus] waitForResults: timed out after ' + timeoutMs + 'ms — title: "' + debugTitle + '", body: "' + debugBody + '"');
     return false;
   }
 

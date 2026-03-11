@@ -499,7 +499,32 @@ async function nextJob(){
     try{if(state.tabId){try{await chrome.tabs.setZoom(state.tabId,0.75);}catch(e){}await chrome.tabs.remove(state.tabId);}}catch(x){}
   }
   bc();
-  if(state.isRunning){await new Promise(function(r){setTimeout(r,rDelay(5000,10000));});nextJob();}
+  if(state.isRunning){
+    /* Smart backoff: if job got 0 profiles, LinkedIn is likely rate-limiting.
+       Wait progressively longer to let the rate limit cool down. */
+    var jobProfiles=job.profilesScraped||0;
+    var delay;
+    if(jobProfiles===0){
+      /* Count consecutive zero-profile jobs */
+      var zeroStreak=0;
+      for(var zi=state.currentJobIndex;zi>=0;zi--){
+        if(state.jobs[zi].profilesScraped===0)zeroStreak++;
+        else break;
+      }
+      /* Exponential backoff: 60s, 120s, 180s... up to 5 min */
+      delay=Math.min(zeroStreak*60000,300000);
+      addLog('warn','Rate limit detected ('+zeroStreak+' consecutive zero jobs). Waiting '+Math.round(delay/1000)+'s before next job...');
+    }else if(consecutiveEmpty>=3){
+      /* Job got some profiles but ended with empty pages — partial rate limit */
+      delay=rDelay(30000,60000);
+      addLog('info','Partial rate limit (ended with empty pages). Waiting '+Math.round(delay/1000)+'s before next job...');
+    }else{
+      /* Normal: 10-20s between successful jobs */
+      delay=rDelay(10000,20000);
+    }
+    await new Promise(function(r){setTimeout(r,delay);});
+    nextJob();
+  }
 }
 
 function stopBatch(){
@@ -583,7 +608,12 @@ async function waitContentReady(tid,timeout){
   try{
     var r=await tabMsg(tid,{action:'waitForResults',timeout:timeout});
     if(r&&r.found){addLog('info','Content ready: '+r.itemCount+' items');return true;}
-    addLog('warn','Content not ready after '+timeout+'ms');return false;
+    /* Try to get the page title/URL for debugging */
+    try{
+      var t=await chrome.tabs.get(tid);
+      addLog('warn','Content not ready after '+timeout+'ms — URL: '+(t.url||'?').substring(0,80)+', title: '+(t.title||'?').substring(0,60));
+    }catch(e2){addLog('warn','Content not ready after '+timeout+'ms');}
+    return false;
   }catch(e){addLog('warn','waitContentReady err: '+e.message);return false;}
 }
 
