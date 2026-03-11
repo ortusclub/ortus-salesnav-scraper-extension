@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Ortus Scraper Logs</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root{--bg:#0f1117;--surface:#1a1d27;--border:#2e3244;--text:#e4e5ea;--text-dim:#8b8fa3;--blue:#4f8ff7;--green:#3dd68c;--red:#f75f5f;--yellow:#f7c948;--font:'DM Sans',sans-serif;--mono:'JetBrains Mono',monospace;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);padding:20px;min-height:100vh;}
+  .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+  h1{font-size:16px;font-weight:700;}
+  .header-right{display:flex;gap:8px;}
+  button{padding:6px 14px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;}
+  button:hover{background:#232633;}
+  .btn-danger{border-color:rgba(247,95,95,0.3);color:var(--red);}
+  .stats{display:flex;gap:16px;margin-bottom:12px;font-size:12px;color:var(--text-dim);}
+  .stats span{background:var(--surface);padding:4px 10px;border-radius:4px;}
+  .log-list{font-family:var(--mono);font-size:12px;line-height:1.7;}
+  .log-entry{padding:4px 10px;border-bottom:1px solid rgba(46,50,68,0.5);display:flex;gap:12px;}
+  .log-entry:hover{background:var(--surface);}
+  .log-time{color:var(--text-dim);white-space:nowrap;flex-shrink:0;min-width:80px;}
+  .log-level{font-weight:600;flex-shrink:0;min-width:44px;text-transform:uppercase;font-size:10px;padding:2px 0;}
+  .log-level.info{color:var(--blue);}
+  .log-level.warn{color:var(--yellow);}
+  .log-level.error{color:var(--red);}
+  .log-msg{flex:1;word-break:break-all;}
+  .empty{text-align:center;color:var(--text-dim);padding:40px;font-size:14px;}
+  .filter-bar{display:flex;gap:8px;margin-bottom:12px;}
+  .filter-btn{padding:4px 10px;border-radius:12px;font-size:11px;border:1px solid var(--border);}
+  .filter-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Ortus Scraper — Live Logs</h1>
+  <div class="header-right">
+    <button id="btn-refresh">Refresh</button>
+    <button id="btn-clear" class="btn-danger">Clear Logs</button>
+  </div>
+</div>
+<div class="filter-bar">
+  <button class="filter-btn active" data-level="all">All</button>
+  <button class="filter-btn" data-level="info">Info</button>
+  <button class="filter-btn" data-level="warn">Warn</button>
+  <button class="filter-btn" data-level="error">Error</button>
+</div>
+<div class="stats" id="stats"></div>
+<div class="log-list" id="log-list"></div>
+
+<script>
+var currentFilter='all';
+var autoRefresh=null;
+
+document.getElementById('btn-refresh').addEventListener('click',loadLogs);
+document.getElementById('btn-clear').addEventListener('click',function(){
+  chrome.storage.session.remove('ortus_logs',function(){loadLogs();});
+});
+document.querySelectorAll('.filter-btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('active');});
+    btn.classList.add('active');
+    currentFilter=btn.getAttribute('data-level');
+    loadLogs();
+  });
+});
+
+function loadLogs(){
+  chrome.storage.session.get('ortus_logs',function(d){
+    var logs=(d&&d.ortus_logs)?d.ortus_logs:[];
+    if(logs.length===0){document.getElementById('log-list').innerHTML='<div class="empty">No logs yet. Start a scrape to see activity here.</div>';document.getElementById('stats').innerHTML='';return;}
+    var infoCount=logs.filter(function(l){return l.l==='info';}).length;
+    var warnCount=logs.filter(function(l){return l.l==='warn';}).length;
+    var errCount=logs.filter(function(l){return l.l==='error';}).length;
+    document.getElementById('stats').innerHTML='<span>'+logs.length+' total</span><span style="color:var(--blue)">'+infoCount+' info</span><span style="color:var(--yellow)">'+warnCount+' warn</span><span style="color:var(--red)">'+errCount+' error</span>';
+
+    var filtered=currentFilter==='all'?logs:logs.filter(function(l){return l.l===currentFilter;});
+    var html='';
+    for(var i=filtered.length-1;i>=0;i--){
+      var e=filtered[i];
+      var dt=new Date(e.t);
+      var ts=dt.toLocaleTimeString()+'.'+String(dt.getMilliseconds()).padStart(3,'0');
+      html+='<div class="log-entry"><span class="log-time">'+ts+'</span><span class="log-level '+e.l+'">'+e.l+'</span><span class="log-msg">'+escHtml(e.m)+'</span></div>';
+    }
+    document.getElementById('log-list').innerHTML=html||'<div class="empty">No matching logs</div>';
+  });
+}
+
+function escHtml(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+loadLogs();
+autoRefresh=setInterval(loadLogs,2000);
+</script>
+</body>
+</html>

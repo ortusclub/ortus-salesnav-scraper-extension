@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+  :root{--bg:#0f1117;--surface:#1a1d27;--surface-2:#232633;--border:#2e3244;--text:#e4e5ea;--text-dim:#8b8fa3;--text-muted:#5e6278;--blue:#4f8ff7;--blue-dim:rgba(79,143,247,0.12);--green:#3dd68c;--green-dim:rgba(61,214,140,0.12);--red:#f75f5f;--red-dim:rgba(247,95,95,0.12);--yellow:#f7c948;--yellow-dim:rgba(247,201,72,0.12);--orange:#f7943e;--orange-dim:rgba(247,148,62,0.12);--radius:10px;--font:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{width:420px;min-height:200px;max-height:600px;overflow-y:auto;font-family:var(--font);font-size:13px;background:var(--bg);color:var(--text);}
+  .header{padding:16px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
+  .header-icon{width:34px;height:34px;background:linear-gradient(135deg,#4f8ff7,#7c5ff7);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+  .header-text h1{font-size:14px;font-weight:700;letter-spacing:-0.2px;}
+  .header-text p{font-size:11px;color:var(--text-dim);margin-top:1px;}
+  .section{padding:16px 20px;}.section+.section{border-top:1px solid var(--border);}
+  .status-banner{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:var(--radius);font-size:12px;font-weight:500;}
+  .status-banner.info{background:var(--blue-dim);color:var(--blue);}
+  .status-banner.success{background:var(--green-dim);color:var(--green);}
+  .status-banner.warning{background:var(--yellow-dim);color:var(--yellow);}
+  .status-banner.error{background:var(--red-dim);color:var(--red);}
+  .status-banner.interrupted{background:var(--orange-dim);color:var(--orange);}
+  .status-banner .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0;}
+  .status-banner.info .dot{animation:pulse 2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  label{display:block;font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;}
+  input[type="text"],input[type="number"],select{width:100%;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font);outline:none;transition:border-color 0.15s;}
+  input::placeholder{color:var(--text-muted);}input:focus,select:focus{border-color:var(--blue);}
+  input[type="number"]{-moz-appearance:textfield;}input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
+  select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b8fa3' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;cursor:pointer;}
+  select option{background:var(--surface);color:var(--text);}
+  .input-hint{font-size:11px;color:var(--text-muted);margin-top:4px;line-height:1.5;}.field+.field{margin-top:12px;}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font);cursor:pointer;transition:all 0.15s;}
+  .btn-primary{background:var(--blue);color:#fff;}.btn-primary:hover{background:#3d7de0;}.btn-primary:disabled{background:var(--surface-2);color:var(--text-muted);cursor:default;}
+  .btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border);}.btn-secondary:hover{background:var(--surface-2);}
+  .btn-danger{background:var(--red-dim);color:var(--red);}
+  .btn-warning{background:var(--orange-dim);color:var(--orange);border:1px solid rgba(247,148,62,0.25);}.btn-warning:hover{background:rgba(247,148,62,0.2);}
+  .btn-row{display:flex;gap:8px;}.btn-row .btn{flex:1;}
+  .tabs{display:flex;border-bottom:1px solid var(--border);}
+  .tab{flex:1;padding:10px;text-align:center;font-size:12px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s;}
+  .tab.active{color:var(--blue);border-bottom-color:var(--blue);}.tab:hover{color:var(--text);}
+  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;}
+  .stat-card .value{font-size:20px;font-weight:700;letter-spacing:-0.5px;}
+  .stat-card .label{font-size:10px;color:var(--text-dim);margin-top:2px;}
+  .progress-bar{width:100%;height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden;margin:8px 0;}
+  .progress-fill{height:100%;background:var(--blue);border-radius:3px;transition:width 0.4s ease;}
+  .progress-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);}
+  .complete-card{background:var(--green-dim);border:1px solid rgba(61,214,140,0.2);border-radius:var(--radius);padding:20px;text-align:center;}
+  .complete-card .icon{font-size:30px;margin-bottom:6px;}.complete-card h3{color:var(--green);font-size:15px;}.complete-card p{color:var(--text-dim);font-size:12px;margin-top:4px;}
+  .job-list{list-style:none;}
+  .job-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);font-size:12px;}.job-item:last-child{border-bottom:none;}
+  .job-num{width:22px;height:22px;background:var(--surface-2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0;}
+  .job-info{flex:1;min-width:0;}.job-info .job-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.job-info .job-dest{color:var(--text-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .job-status{font-size:11px;font-weight:600;flex-shrink:0;padding:3px 8px;border-radius:4px;}
+  .job-status.pending{color:var(--text-muted);background:var(--surface-2);}.job-status.running{color:var(--blue);background:var(--blue-dim);}.job-status.done{color:var(--green);background:var(--green-dim);}.job-status.partial{color:var(--yellow);background:var(--yellow-dim);}.job-status.error{color:var(--red);background:var(--red-dim);}
+  .hidden{display:none !important;}
+  ::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  a{color:var(--blue);text-decoration:none;}a:hover{text-decoration:underline;}
+  .step-indicator{display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:11px;color:var(--text-muted);}
+  .step-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;flex-shrink:0;}
+  .step-dot.active{border-color:var(--blue);color:var(--blue);background:var(--blue-dim);}
+  .step-dot.completed{border-color:var(--green);color:var(--green);background:var(--green-dim);}
+  .step-line{flex:1;height:1px;background:var(--border);}
+  .col-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;color:var(--text-dim);max-height:80px;overflow-y:auto;line-height:1.8;}
+  .col-preview span{background:var(--surface-2);padding:2px 8px;border-radius:4px;margin:2px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .row-range{display:flex;align-items:center;gap:8px;}
+  .row-range input{width:80px;text-align:center;}
+  .row-range .range-sep{color:var(--text-muted);font-size:12px;font-weight:600;}
+  .section-title{font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+</style>
+</head>
+<body>
+<div class="header"><div class="header-icon">&#128269;</div><div class="header-text"><h1>Ortus Scraper</h1><p>Sales Nav to Google Sheets</p></div><a href="#" id="btn-logs" style="font-size:11px;margin-left:auto;color:var(--text-dim);text-decoration:none;padding:4px 8px;border:1px solid var(--border);border-radius:6px;">Logs</a></div>
+<div class="tabs"><div class="tab active" id="tab-single">This Page</div><div class="tab" id="tab-batch">Batch Scrape</div></div>
+
+<!-- SINGLE views (unchanged) -->
+<div id="view-single-wrong" class="hidden"><div class="section"><div class="status-banner warning"><span class="dot"></span><span>Navigate to a Sales Navigator search page first</span></div><p style="margin-top:12px;font-size:12px;color:var(--text-dim);line-height:1.6;">Go to <a href="https://www.linkedin.com/sales/search/people" target="_blank">Sales Navigator</a>, run your search, then click this extension.</p></div></div>
+
+<div id="view-single-ready" class="hidden"><div class="section"><div class="status-banner success"><span class="dot"></span><span id="ready-status">Sales Nav search detected</span></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="stat-results">-</div><div class="label">Results</div></div><div class="stat-card"><div class="value" id="stat-pages">-</div><div class="label">Pages</div></div></div><div class="field"><label>Result Sheet URL</label><input type="text" id="input-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/..."><div class="input-hint">Where should the scraped profiles go?</div></div><div class="field"><label>Tab Name (optional)</label><input type="text" id="input-sheet-name" placeholder="Sales Nav Scrape"></div></div><div class="section"><div class="status-banner warning" style="margin-bottom:12px;line-height:1.5;"><span class="dot"></span><span>Make sure your laptop does not sleep or the screen turn off while scraping. The easiest way is to open Terminal and run: <code style="background:var(--surface-2);padding:2px 6px;border-radius:4px;font-size:12px;">caffeinate -d</code></span></div><button class="btn btn-primary" id="btn-start">Start Scraping</button></div></div>
+
+<div id="view-single-progress" class="hidden"><div class="section"><div class="status-banner info"><span class="dot"></span><span id="progress-status">Scraping...</span></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="prog-profiles">0</div><div class="label">Profiles</div></div><div class="stat-card"><div class="value" id="prog-page">0/0</div><div class="label">Page</div></div></div><div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div><div class="progress-meta"><span id="prog-pct">0%</span><span id="prog-eta">Estimating...</span></div></div><div class="section"><div class="btn-row"><button class="btn btn-secondary" id="btn-pause">Pause</button><button class="btn btn-danger" id="btn-stop">Stop</button></div></div></div>
+
+<div id="view-single-done" class="hidden"><div class="section"><div class="complete-card"><div class="icon">&#10003;</div><h3>Scraping Complete</h3><p id="complete-summary"></p></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="done-profiles">0</div><div class="label">Profiles</div></div><div class="stat-card"><div class="value" id="done-pages">0</div><div class="label">Pages</div></div><div class="stat-card"><div class="value" id="done-time">0s</div><div class="label">Time</div></div><div class="stat-card"><div class="value" id="done-errors">0</div><div class="label">Errors</div></div></div><button class="btn btn-secondary" id="btn-open-sheet" style="margin-bottom:8px;">Open Sheet</button><button class="btn btn-secondary" id="btn-csv">Download CSV</button></div><div class="section"><button class="btn btn-primary" id="btn-again">Scrape Again</button></div></div>
+
+<div id="view-single-interrupted" class="hidden"><div class="section"><div class="status-banner interrupted"><span class="dot"></span><span id="interrupted-msg">Scraping was interrupted</span></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="int-profiles">0</div><div class="label">Profiles Saved</div></div><div class="stat-card"><div class="value" id="int-page">0/0</div><div class="label">Last Page</div></div></div><p style="font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:14px;">You can resume from where it left off or start fresh.</p><div class="btn-row"><button class="btn btn-warning" id="btn-resume">Resume</button><button class="btn btn-secondary" id="btn-discard">Start Fresh</button></div></div></div>
+
+<!-- BATCH Step 1: Connect to source sheet -->
+<div id="view-batch-setup" class="hidden"><div class="section"><div class="step-indicator"><div class="step-dot active">1</div><div class="step-line"></div><div class="step-dot">2</div><div class="step-line"></div><div class="step-dot">3</div></div><div class="field"><label>Source Spreadsheet URL</label><input type="text" id="input-src-sheet" placeholder="https://docs.google.com/spreadsheets/d/..."><div class="input-hint">The sheet containing your Sales Nav links</div></div></div><div class="section"><button class="btn btn-primary" id="btn-connect-sheet">Connect</button></div></div>
+
+<!-- BATCH Step 1b: Pick tab -->
+<div id="view-batch-tab-select" class="hidden"><div class="section"><div class="step-indicator"><div class="step-dot active">1</div><div class="step-line"></div><div class="step-dot">2</div><div class="step-line"></div><div class="step-dot">3</div></div><div class="status-banner success"><span class="dot"></span><span id="sheet-title">Connected</span></div><div class="field" style="margin-top:12px"><label>Select Tab</label><select id="sel-src-tab"></select><div class="input-hint" id="tab-row-hint"></div></div></div><div class="section"><div class="btn-row"><button class="btn btn-secondary" id="btn-tab-back">Back</button><button class="btn btn-primary" id="btn-load-tab">Load Data</button></div></div></div>
+
+<!-- BATCH Step 2: Configure columns, rows, destination -->
+<div id="view-batch-config" class="hidden"><div class="section"><div class="step-indicator"><div class="step-dot completed">&#10003;</div><div class="step-line"></div><div class="step-dot active">2</div><div class="step-line"></div><div class="step-dot">3</div></div>
+<div class="section-title">Source Data</div>
+<div class="field"><label>Column with Sales Nav URLs</label><select id="sel-url-col"></select><div class="col-preview" id="col-preview"></div></div>
+<div class="field"><label>Row Range</label><div class="row-range"><input type="number" id="input-row-from" min="2" placeholder="2"><span class="range-sep">to</span><input type="number" id="input-row-to" placeholder="All"></div><div class="input-hint">Sheet row numbers (row 1 is the header). Leave "to" empty for all rows.</div></div>
+</div><div class="section">
+<div class="section-title">Destination</div>
+<div class="field"><label>Results Sheet URL</label><input type="text" id="input-dest-sheet" placeholder="https://docs.google.com/spreadsheets/d/..."><div class="input-hint">Where scraped profiles are saved</div></div>
+<div class="field"><label>Tab Name Per Job</label><select id="sel-tab-source"><option value="auto">Auto-number (Scrape 1, Scrape 2...)</option><option value="fixed">Same tab for all</option></select></div>
+<div class="field hidden" id="field-fixed-tab"><label>Tab Name</label><input type="text" id="input-dest-tab" placeholder="Sales Nav Scrape"></div>
+<div class="field hidden" id="field-tab-col"><label>Column with Tab Names</label><select id="sel-tab-col"></select><div class="col-preview" id="tab-col-preview"></div></div>
+</div><div class="section">
+<div class="section-title">Write Back to Source</div>
+<div class="field"><label>Write Result Link to Column</label><select id="sel-output-col"><option value="-1">Don't write back</option></select><div class="input-hint">After each job, the results sheet link is written into this column of the source sheet</div></div>
+</div><div class="section"><div class="btn-row"><button class="btn btn-secondary" id="btn-config-back">Back</button><button class="btn btn-primary" id="btn-batch-confirm">Build Jobs</button></div></div></div>
+
+<!-- BATCH Step 3: Confirm & start -->
+<div id="view-batch-ready" class="hidden"><div class="section"><div class="step-indicator"><div class="step-dot completed">&#10003;</div><div class="step-line"></div><div class="step-dot completed">&#10003;</div><div class="step-line"></div><div class="step-dot active">3</div></div><div class="status-banner success"><span class="dot"></span><span id="batch-ready-msg">Ready</span></div><ul class="job-list" id="job-list" style="margin-top:12px;max-height:200px;overflow-y:auto;"></ul></div><div class="section"><div class="status-banner warning" style="margin-bottom:12px;line-height:1.5;"><span class="dot"></span><span>Make sure your laptop does not sleep or the screen turn off while scraping. The easiest way is to open Terminal and run: <code style="background:var(--surface-2);padding:2px 6px;border-radius:4px;font-size:12px;">caffeinate -d</code></span></div><div class="btn-row"><button class="btn btn-secondary" id="btn-ready-back">Back</button><button class="btn btn-primary" id="btn-start-batch">Start Scraping</button></div></div></div>
+
+<!-- BATCH: Running -->
+<div id="view-batch-running" class="hidden"><div class="section"><div class="status-banner info"><span class="dot"></span><span id="batch-status">Running batch...</span></div><div style="margin-top:12px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:4px"><span id="bp-lbl">Scraping...</span><span id="bp-pct">0%</span></div><div class="progress-bar"><div class="progress-fill" id="bp-bar" style="width:0%"></div></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);margin-top:4px"><span id="bp-n">0 profiles</span><span id="bp-t"></span></div></div><ul class="job-list" id="batch-job-list" style="margin-top:12px;max-height:200px;overflow-y:auto;"></ul></div><div class="section"><button class="btn btn-danger" id="btn-stop-batch">Stop Batch</button></div></div>
+
+<!-- BATCH: Done -->
+<div id="view-batch-done" class="hidden"><div class="section"><div class="complete-card"><div class="icon">&#10003;</div><h3>Batch Complete</h3><p id="batch-done-msg"></p></div></div><div class="section"><ul class="job-list" id="batch-done-list"></ul></div><div class="section"><button class="btn btn-primary" id="btn-batch-again">Run Another Batch</button></div></div>
+
+<!-- BATCH: Interrupted -->
+<div id="view-batch-interrupted" class="hidden"><div class="section"><div class="status-banner interrupted"><span class="dot"></span><span id="batch-int-msg">Batch was interrupted</span></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="bint-done">0</div><div class="label">Jobs Done</div></div><div class="stat-card"><div class="value" id="bint-total">0</div><div class="label">Total Jobs</div></div></div><ul class="job-list" id="batch-int-list" style="margin-top:0;max-height:150px;overflow-y:auto;margin-bottom:14px;"></ul><div class="btn-row"><button class="btn btn-warning" id="btn-resume-batch">Resume</button><button class="btn btn-secondary" id="btn-discard-batch">Start Fresh</button></div></div></div>
+
+<script src="popup.js"></script>
+</body>
+</html>

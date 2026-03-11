@@ -1,0 +1,110 @@
+function doPost(e) {
+  try {
+    var p = JSON.parse(e.postData.contents);
+    switch (p.action) {
+      case "writeProfiles": return handleWrite(p);
+      case "readTabs": return handleReadTabs(p);
+      case "readColumns": return handleReadColumns(p);
+      case "readJobs": return handleReadJobs(p);
+      case "updateJob": return handleUpdateJob(p);
+      case "writeBackLink": return handleWriteBackLink(p);
+      default: return jr({success:false, error:"Unknown: "+p.action});
+    }
+  } catch(err) { return jr({success:false, error:err.message}); }
+}
+
+function doGet() { return jr({status:"ok",version:"2.2",actions:["writeProfiles","readTabs","readColumns","readJobs","updateJob","writeBackLink"]}); }
+
+function handleWrite(p) {
+  if (!p.sheetUrl) return jr({success:false,error:"Missing sheetUrl"});
+  if (!p.profiles||!p.profiles.length) return jr({success:false,error:"No profiles"});
+  var ss=SpreadsheetApp.openByUrl(p.sheetUrl);
+  var tab=p.tabName||"Sheet1";
+  var sh=ss.getSheetByName(tab); if(!sh) sh=ss.insertSheet(tab);
+  if(sh.getLastRow()===0){
+    var h=["Record ID","First Name","Last Name","Domain","Priority (Company)","Priority (Role)","Priority","Lead Status","Company Name","Job Title","Linkedin Bio","First Phone","First Phone Value","Phone Number","Whatsapp Link","Mobile Phone Number","Email","Email Verification","LinkedIn Membership ID","Location","Notes","Secondary Email","Hubspot URL","Ortus Members","Current Tag","Open Profile","Linkedin First Connection","Client Lead Status","Apollo Contact ID"];
+    sh.appendRow(h);sh.getRange(1,1,1,h.length).setFontWeight("bold");sh.setFrozenRows(1);
+  }
+  var rows=p.profiles.map(function(r){return["",r.firstName||"",r.lastName||"","","","","","",r.company||"",r.jobTitle||"",r.publicUrl||r.profileUrl||"","","","","","",r.linkedinEmail||"","",(r.membershipId||"").toString(),r.location||"","","","","","",r.openProfile||"No","","",""]});
+  var start=sh.getLastRow()+1;
+  sh.getRange(start,1,rows.length,rows[0].length).setValues(rows);
+  return jr({success:true,rowsWritten:rows.length});
+}
+
+/* List all VISIBLE tabs in a spreadsheet */
+function handleReadTabs(p) {
+  if (!p.sheetUrl) return jr({success:false,error:"Missing sheetUrl"});
+  var ss = SpreadsheetApp.openByUrl(p.sheetUrl);
+  var sheets = ss.getSheets();
+  var tabs = [];
+  for (var i = 0; i < sheets.length; i++) {
+    if (!sheets[i].isSheetHidden()) {
+      tabs.push({name: sheets[i].getName(), rows: sheets[i].getLastRow(), cols: sheets[i].getLastColumn()});
+    }
+  }
+  return jr({success:true, tabs:tabs, title:ss.getName()});
+}
+
+/* Read headers + data from a specific tab */
+function handleReadColumns(p) {
+  if (!p.sheetUrl) return jr({success:false,error:"Missing sheetUrl"});
+  var ss = SpreadsheetApp.openByUrl(p.sheetUrl);
+  var sh;
+  if (p.tabName && p.tabName.trim()) {
+    sh = ss.getSheetByName(p.tabName.trim());
+    if (!sh) return jr({success:false,error:"Tab '"+p.tabName+"' not found"});
+  } else {
+    sh = ss.getSheets()[0];
+  }
+  var data = sh.getDataRange().getValues();
+  if (data.length < 1) return jr({success:true,headers:[],sampleRows:[],allRows:[],totalRows:0});
+  var headers = data[0].map(function(h){return (h||"").toString();});
+  var sampleRows = [];
+  for (var i=1; i<Math.min(data.length,6); i++) {
+    sampleRows.push(data[i].map(function(c){return (c||"").toString();}));
+  }
+  var allRows = [];
+  for (var j=1; j<data.length; j++) {
+    allRows.push(data[j].map(function(c){return (c||"").toString();}));
+  }
+  return jr({success:true, headers:headers, sampleRows:sampleRows, allRows:allRows, totalRows:data.length-1});
+}
+
+/* Write a result sheet link back into a column of the source sheet */
+function handleWriteBackLink(p) {
+  if (!p.sheetUrl || !p.tabName) return jr({success:false,error:"Missing params"});
+  if (!p.row || !p.col) return jr({success:false,error:"Missing row/col"});
+  var ss = SpreadsheetApp.openByUrl(p.sheetUrl);
+  var sh = ss.getSheetByName(p.tabName);
+  if (!sh) return jr({success:false,error:"Tab not found"});
+  sh.getRange(p.row, p.col).setValue(p.value || "");
+  return jr({success:true});
+}
+
+function handleReadJobs(p) {
+  if(!p.jobSheetUrl) return jr({success:false,error:"Missing jobSheetUrl"});
+  var ss=SpreadsheetApp.openByUrl(p.jobSheetUrl);
+  var sh=ss.getSheets()[0]; var data=sh.getDataRange().getValues();
+  if(data.length<2) return jr({success:true,jobs:[]});
+  var jobs=[];
+  for(var i=1;i<data.length;i++){
+    var url=(data[i][0]||"").toString().trim(); if(!url)continue;
+    jobs.push({row:i+1, salesNavUrl:url, resultSheetUrl:(data[i][1]||"").toString().trim(),
+      tabName:(data[i][2]||"Sheet1").toString().trim(), status:(data[i][3]||"Pending").toString().trim(),
+      profiles:parseInt(data[i][4])||0, lastRun:(data[i][5]||"").toString().trim()});
+  }
+  return jr({success:true,jobs:jobs});
+}
+
+function handleUpdateJob(p) {
+  if(!p.jobSheetUrl||!p.row) return jr({success:false,error:"Missing params"});
+  var ss=SpreadsheetApp.openByUrl(p.jobSheetUrl);
+  var sh=ss.getSheets()[0];
+  if(p.status) sh.getRange(p.row,4).setValue(p.status);
+  if(p.profileCount!==undefined) sh.getRange(p.row,5).setValue(p.profileCount);
+  sh.getRange(p.row,6).setValue(new Date().toISOString());
+  if(p.errorMsg) sh.getRange(p.row,7).setValue(p.errorMsg);
+  return jr({success:true,row:p.row});
+}
+
+function jr(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON)}
