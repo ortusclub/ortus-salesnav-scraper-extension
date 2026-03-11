@@ -207,6 +207,8 @@ async function runSinglePage(){
   chrome.action.setBadgeText({text:state.totalPages>0?pg+'/'+state.totalPages:'p'+pg});bc();
   try{
     await waitTab(tid);
+    /* Ensure results are loaded before extracting */
+    await waitContentReady(tid,15000);
     var r=await tabMsg(tid,{action:'extractProfiles'});
     if(r&&r.profiles){
       for(var i=0;i<r.profiles.length;i++)r.profiles[i].pageNumber=pg;
@@ -220,7 +222,10 @@ async function runSinglePage(){
     await new Promise(function(r){setTimeout(r,rDelay(DELAY_MIN,DELAY_MAX));});
     if(!state.isRunning||state.isPaused)return;
     state.currentPage=pg+1;
-    await tabMsg(tid,{action:'goToNextPage'});await waitNav(tid);runSinglePage();
+    await tabMsg(tid,{action:'goToNextPage'});await waitNav(tid);
+    try{await chrome.scripting.executeScript({target:{tabId:tid},files:['content.js']});}catch(e){}
+    await waitContentReady(tid,15000);
+    runSinglePage();
   }catch(err){
     state.errors.push({page:pg,error:err.message||String(err)});
     /* Check if it's a tab-closed / fatal error */
@@ -305,8 +310,26 @@ async function nextJob(){
     await new Promise(function(r){setTimeout(r,8000);});
     try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e){}
     await new Promise(function(r){setTimeout(r,1000);});
+    /* Wait for content to be ready before getting page info */
+    await waitContentReady(tab.id,15000);
     var pi;try{pi=await tabMsg(tab.id,{action:'getPageInfo'});}catch(e){pi={totalPages:1,hasNextPage:false,currentPage:1};}
     var totalR=pi.totalResults||0;
+    /* If totalR is 0, try a full reload — page may not have loaded properly */
+    if(totalR===0){
+      addLog('warn','Job '+(jn)+': totalR=0 on first load, trying full reload...');
+      try{
+        await chrome.tabs.update(tab.id,{url:job.salesNavUrl});
+        await waitTab(tab.id,20000);
+        try{await chrome.tabs.setZoom(tab.id,0.25);}catch(e){}
+        await new Promise(function(r){setTimeout(r,8000);});
+        try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e){}
+        await new Promise(function(r){setTimeout(r,2000);});
+        await waitContentReady(tab.id,15000);
+        try{pi=await tabMsg(tab.id,{action:'getPageInfo'});}catch(e){pi={totalPages:1,hasNextPage:false,currentPage:1};}
+        totalR=pi.totalResults||0;
+        addLog('info','After reload: totalR='+totalR);
+      }catch(e){addLog('error','First page reload error: '+e.message);}
+    }
     state.totalResults=totalR;state.profilesScraped=0;state.currentPage=1;bc();
     var maxPage=totalR>0?Math.min(Math.ceil(totalR/25),100):100;/* LinkedIn caps at 2500/100 pages */
     addLog('info','Job '+(jn)+': '+totalR+' results'+(totalR>2500?' (capped at 2500)':'')+', maxPage='+maxPage+', hasNext='+(pi.hasNextPage||false));
@@ -346,6 +369,7 @@ async function nextJob(){
               await new Promise(function(r){setTimeout(r,5000);});
               try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e3){}
               await new Promise(function(r){setTimeout(r,2000);});
+              await waitContentReady(tab.id,15000);
               var r3=await tabMsg(tab.id,{action:'extractProfiles'});
               if(r3&&r3.profiles&&r3.profiles.length>0){
                 for(var i3=0;i3<r3.profiles.length;i3++)r3.profiles[i3].pageNumber=cp;
@@ -446,6 +470,8 @@ async function nextJob(){
         await new Promise(function(r){setTimeout(r,2000);});
         try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e){}
         await new Promise(function(r){setTimeout(r,1000);});
+        /* Wait for results to actually appear before extracting */
+        await waitContentReady(tab.id,15000);
       }
     }
     addLog('info', 'Job '+(jn)+' done: '+allP.length+' profiles, '+cp+' pages (totalR='+totalR+(totalR>2500?', capped at 2500':'')+')');
@@ -528,8 +554,37 @@ function waitNav(tid,to){
     var done=false;
     var fn=function(id,info){if(id===tid&&info.status==='complete'){chrome.tabs.onUpdated.removeListener(fn);if(!done){done=true;setTimeout(res,2000);}}};
     chrome.tabs.onUpdated.addListener(fn);
+    /* For SPA navigation, tabs.onUpdated may not fire. Poll URL change as fallback. */
+    var startUrl='';
+    try{chrome.tabs.get(tid,function(t){if(t)startUrl=t.url||'';});}catch(e){}
+    var pollCount=0;
+    var pollFn=function(){
+      if(done||pollCount>40)return;
+      pollCount++;
+      try{chrome.tabs.get(tid,function(t){
+        if(chrome.runtime.lastError||!t){if(!done){done=true;res();}return;}
+        /* If URL changed (SPA nav) and tab is complete, we're done */
+        if(startUrl&&t.url!==startUrl&&t.status==='complete'){
+          chrome.tabs.onUpdated.removeListener(fn);
+          if(!done){done=true;setTimeout(res,1500);}
+          return;
+        }
+        setTimeout(pollFn,500);
+      });}catch(e){if(!done){done=true;res();}}
+    };
+    setTimeout(pollFn,1000);
     setTimeout(function(){chrome.tabs.onUpdated.removeListener(fn);if(!done){done=true;res();}},to);
   });
+}
+
+/* Wait for content script to confirm results are loaded */
+async function waitContentReady(tid,timeout){
+  timeout=timeout||15000;
+  try{
+    var r=await tabMsg(tid,{action:'waitForResults',timeout:timeout});
+    if(r&&r.found){addLog('info','Content ready: '+r.itemCount+' items');return true;}
+    addLog('warn','Content not ready after '+timeout+'ms');return false;
+  }catch(e){addLog('warn','waitContentReady err: '+e.message);return false;}
 }
 
 function toCSV(ps){

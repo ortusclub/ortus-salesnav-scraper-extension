@@ -439,10 +439,45 @@
     return qsAll(document, SELECTORS.resultItem);
   }
 
+  /* ── Wait for result cards to appear in the DOM ── */
+  async function waitForResults(timeoutMs) {
+    timeoutMs = timeoutMs || 20000;
+    var start = Date.now();
+    var checkInterval = 500;
+    while (Date.now() - start < timeoutMs) {
+      var items = qsAll(document, SELECTORS.resultItem);
+      /* Also check for profile links as a fallback signal */
+      var links = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
+      if (items.length >= 3 || links.length >= 3) {
+        console.log('[Ortus] waitForResults: found ' + items.length + ' items, ' + links.length + ' links after ' + (Date.now() - start) + 'ms');
+        /* Wait a bit more for remaining items to render */
+        await sleep(1500);
+        return true;
+      }
+      /* Check for "No results" or error states */
+      var body = document.body ? document.body.innerText : '';
+      if (body.indexOf('No results found') !== -1 || body.indexOf('0 results') !== -1) {
+        console.log('[Ortus] waitForResults: "No results" detected');
+        return false;
+      }
+      await sleep(checkInterval);
+    }
+    console.log('[Ortus] waitForResults: timed out after ' + timeoutMs + 'ms');
+    return false;
+  }
+
   /* ── MAIN: scrollIntoView approach ── */
 
   async function scrollAndExtractAll() {
     var allProfiles = new Map();
+
+    /* Wait for results to appear in the DOM (handles SPA navigation delay) */
+    var hasResults = await waitForResults(20000);
+    if (!hasResults) {
+      console.log('[Ortus] No results appeared after waiting — page may be empty or still loading');
+      /* Try one more time with a longer wait */
+      await sleep(5000);
+    }
 
     /* Harvest initial */
     var initial = harvestVisible();
@@ -459,8 +494,8 @@
 
     /* Scroll loop: scroll last visible item into view, wait, harvest, repeat */
     var stableCount = 0;
-    var maxStable = 5;
-    var maxAttempts = 60;
+    var maxStable = 8;
+    var maxAttempts = 80;
     var attempt = 0;
 
     while (attempt < maxAttempts && stableCount < maxStable) {
@@ -479,8 +514,8 @@
         window.dispatchEvent(evt);
       }
 
-      /* Wait for LinkedIn to render new items */
-      await sleep(1000);
+      /* Wait for LinkedIn to render new items (longer wait for lazy loading) */
+      await sleep(1500);
 
       /* Harvest again */
       var batch = harvestVisible();
@@ -606,6 +641,11 @@
       case 'extractProfiles':
         scrollAndExtractAll().then(function(profiles) {
           sendResponse({ profiles: profiles, pageInfo: getPageInfo() });
+        });
+        return true;
+      case 'waitForResults':
+        waitForResults(msg.timeout || 20000).then(function(found) {
+          sendResponse({ found: found, itemCount: qsAll(document, SELECTORS.resultItem).length });
         });
         return true;
       case 'goToNextPage':
