@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Ortus Sales Nav Scraper",
-  "version": "2.3",
-  "description": "Batch scrape LinkedIn Sales Navigator to Google Sheets",
+  "version": "3.0",
+  "description": "Batch scrape LinkedIn Sales Navigator to Google Sheets — fast path, partial retry, slow mode, filter nudge",
   "permissions": [
     "activeTab",
     "tabs",

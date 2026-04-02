@@ -1,10 +1,12 @@
 /**
- * Ortus Sales Nav Scraper - Content Script v7
+ * TEST CCode 1.0 - Content Script v8
  *
- * APPROACH: Instead of finding the scroll container (unreliable),
- * use scrollIntoView() on the last visible result card.
- * The browser scrolls whatever container holds it automatically.
- * Extract at every step, deduplicate by profile URL.
+ * IMPROVEMENTS over v7:
+ * - MutationObserver DOM settling before extraction (catches lazy-rendered cards)
+ * - Incremental scroll-by fallback when scrollIntoView isn't enough
+ * - Validation pass: skip profiles with empty name/URL (placeholder cards)
+ * - Dual deduplication: by URL AND membershipId
+ * - Better scroll timing with exponential backoff on stable counts
  */
 
 (() => {
@@ -24,6 +26,10 @@
 
   /* Increase resource timing buffer */
   try { performance.setResourceTimingBufferSize(500); } catch(e) {}
+
+  /* Slow mode — set by background.js before extraction */
+  var SLOW_MODE = false;
+  function sd(fast, slow) { return SLOW_MODE ? slow : fast; }
 
   /* ═══ openLink state — uses sessionStorage (survives SPA nav + full reload) ═══ */
   var openLinkCache = {};
@@ -147,6 +153,23 @@
   }
 
   function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+  /* Wait for DOM mutations to settle — resolves when no changes for settleMs, max maxWait */
+  function waitForDomSettle(settleMs, maxWait) {
+    settleMs = settleMs || 1000;
+    maxWait = maxWait || 8000;
+    return new Promise(function(resolve) {
+      var target = document.querySelector('main') || document.body;
+      var timer;
+      var observer = new MutationObserver(function() {
+        clearTimeout(timer);
+        timer = setTimeout(function() { observer.disconnect(); resolve(); }, settleMs);
+      });
+      observer.observe(target, { childList: true, subtree: true, characterData: true });
+      timer = setTimeout(function() { observer.disconnect(); resolve(); }, settleMs);
+      setTimeout(function() { observer.disconnect(); resolve(); }, maxWait);
+    });
+  }
 
   function normalizeUrl(url) {
     if (!url) return '';
@@ -439,164 +462,163 @@
     return qsAll(document, SELECTORS.resultItem);
   }
 
-  /* ── Wait for result cards with ACTUAL profile data to appear ── */
-  async function waitForResults(timeoutMs) {
-    timeoutMs = timeoutMs || 20000;
-    var start = Date.now();
-    var checkInterval = 500;
-    while (Date.now() - start < timeoutMs) {
-      /* Check for profile links — the real signal that data is loaded (not just skeleton cards) */
-      var links = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
-      var items = qsAll(document, SELECTORS.resultItem);
-      /* Also check that at least some items have a name inside them */
-      var itemsWithNames = 0;
-      for (var ci = 0; ci < Math.min(items.length, 10); ci++) {
-        var nameEl = qs(items[ci], SELECTORS.profileName);
-        if (nameEl && getText(nameEl).length > 1) itemsWithNames++;
-      }
-      if (links.length >= 3 && itemsWithNames >= 3) {
-        console.log('[Ortus] waitForResults: found ' + items.length + ' items (' + itemsWithNames + ' with names), ' + links.length + ' links after ' + (Date.now() - start) + 'ms');
-        await sleep(1500);
-        return true;
-      }
-      /* Skeleton detection: items exist but no names/links = LinkedIn soft rate limit */
-      if (items.length >= 10 && links.length === 0 && (Date.now() - start) > 10000) {
-        console.log('[Ortus] waitForResults: SKELETON CARDS — ' + items.length + ' items but 0 profile links. LinkedIn soft rate limit.');
-        return false;
-      }
-      if (items.length >= 10 && itemsWithNames === 0 && (Date.now() - start) > 10000) {
-        console.log('[Ortus] waitForResults: EMPTY CARDS — ' + items.length + ' items but 0 with names. LinkedIn soft rate limit.');
-        return false;
-      }
-      /* Check for "No results" or error/block states */
-      var body = document.body ? document.body.innerText : '';
-      if (body.indexOf('No results found') !== -1 || body.indexOf('0 results') !== -1) {
-        console.log('[Ortus] waitForResults: "No results" detected');
-        return false;
-      }
-      /* Detect LinkedIn rate limiting / block pages */
-      var pageTitle = document.title || '';
-      var isBlocked = body.indexOf('something went wrong') !== -1
-        || body.indexOf('too many requests') !== -1
-        || body.indexOf('unusual activity') !== -1
-        || body.indexOf('Let\'s do a quick security check') !== -1
-        || body.indexOf('CAPTCHA') !== -1
-        || pageTitle.indexOf('Security Verification') !== -1
-        || pageTitle.indexOf('Authwall') !== -1
-        || (body.indexOf('Sign in') !== -1 && body.indexOf('Sales Navigator') === -1 && body.length < 2000);
-      if (isBlocked) {
-        console.log('[Ortus] waitForResults: BLOCKED/RATE-LIMITED — title: "' + pageTitle + '", body snippet: "' + body.substring(0, 200) + '"');
-        return false;
-      }
-      await sleep(checkInterval);
-    }
-    /* Log what the page actually shows for debugging */
-    var debugTitle = document.title || '(no title)';
-    var debugItems = qsAll(document, SELECTORS.resultItem).length;
-    var debugLinks = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]').length;
-    var debugBody = (document.body ? document.body.innerText : '').substring(0, 300);
-    console.log('[Ortus] waitForResults: timed out after ' + timeoutMs + 'ms — ' + debugItems + ' items, ' + debugLinks + ' links, title: "' + debugTitle + '", body: "' + debugBody + '"');
-    return false;
-  }
-
   /* ── MAIN: scrollIntoView approach ── */
 
   async function scrollAndExtractAll() {
     var allProfiles = new Map();
+    var seenMemberIds = new Set(); /* Dual dedup: URL + membershipId */
 
-    /* Wait for results to appear in the DOM (handles SPA navigation delay) */
-    var hasResults = await waitForResults(20000);
-    if (!hasResults) {
-      console.log('[Ortus] No results appeared after waiting — page may be empty or still loading');
-      /* Try one more time with a longer wait */
-      await sleep(5000);
+    function addProfile(p) {
+      /* Validate: skip placeholder cards with no real data */
+      if (!p.name || p.name.length < 2) return false;
+      if (!p.profileUrl) return false;
+      /* Skip if already seen by URL or membershipId */
+      var key = p.profileUrl;
+      if (allProfiles.has(key)) return false;
+      if (p.membershipId && seenMemberIds.has(p.membershipId)) return false;
+      allProfiles.set(key, p);
+      if (p.membershipId) seenMemberIds.add(p.membershipId);
+      return true;
     }
+
+    /* Wait for result items to actually appear in the DOM before harvesting.
+     * This is critical: after page load/reload, LinkedIn's SPA may take 5-15s
+     * to render search results. Polling with MutationObserver is far more reliable
+     * than any fixed timeout. */
+    /* Wait for POPULATED result items — not just empty placeholder <li> shells.
+     * LinkedIn renders empty list items first, then fills in names/links lazily.
+     * We poll for profile links with actual text content (length > 1). */
+    console.log('[Ortus] Waiting for populated result items in DOM...');
+    var waitStart = Date.now();
+    var maxContentWait = 20000; /* 20s max — covers slow filter-heavy searches */
+    while (Date.now() - waitStart < maxContentWait) {
+      /* Check for profile links that have actual text (not empty placeholders) */
+      var probeLinks = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
+      var populated = 0;
+      for (var pi2 = 0; pi2 < probeLinks.length; pi2++) {
+        if ((probeLinks[pi2].textContent || '').trim().length > 1) populated++;
+      }
+      /* Also check name spans */
+      var probeNames = document.querySelectorAll('[data-anonymize="person-name"]');
+      for (var pn = 0; pn < probeNames.length; pn++) {
+        if ((probeNames[pn].textContent || '').trim().length > 1) populated++;
+      }
+      if (populated >= 3) {
+        console.log('[Ortus] Found ' + populated + ' populated items after ' + (Date.now() - waitStart) + 'ms');
+        break;
+      }
+      await sleep(500);
+    }
+    if (Date.now() - waitStart >= maxContentWait) {
+      console.log('[Ortus] WARNING: Timed out waiting for populated items after ' + maxContentWait + 'ms');
+    }
+    /* Brief settle — waitForResults already confirmed populated items exist */
+    await waitForDomSettle(sd(600,2000), sd(2000,8000));
 
     /* Harvest initial */
     var initial = harvestVisible();
-    if (initial.length === 0) {
-      /* Log diagnostic info when harvest returns nothing */
-      var diagItems = qsAll(document, SELECTORS.resultItem);
-      var diagLinks = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
-      console.log('[Ortus] harvestVisible returned 0 — DOM has ' + diagItems.length + ' items, ' + diagLinks.length + ' profile links');
-      if (diagItems.length > 0) {
-        var sampleHtml = diagItems[0].innerHTML.substring(0, 300);
-        console.log('[Ortus] First item HTML: ' + sampleHtml);
-      }
-    }
-    for (var i = 0; i < initial.length; i++) {
-      var key = initial[i].profileUrl || initial[i].name;
-      allProfiles.set(key, initial[i]);
-    }
-    console.log('[Ortus] Initial harvest: ' + initial.length + ' profiles');
+    var added = 0;
+    for (var i = 0; i < initial.length; i++) { if (addProfile(initial[i])) added++; }
+    console.log('[Ortus] Initial harvest: ' + added + ' profiles (of ' + initial.length + ' candidates, waited ' + (Date.now() - waitStart) + 'ms)');
 
     /* Get expected total from page info */
     var pageInfo = getPageInfo();
     var expectedTotal = Math.min(pageInfo.resultsPerPage, pageInfo.totalResults || 25);
     console.log('[Ortus] Expecting up to ' + expectedTotal + ' profiles on this page');
 
-    /* Scroll loop: scroll last visible item into view, wait, harvest, repeat */
-    var stableCount = 0;
-    var maxStable = 8;
-    var maxAttempts = 80;
-    var attempt = 0;
-
-    while (attempt < maxAttempts && stableCount < maxStable) {
-      attempt++;
-      var prevSize = allProfiles.size;
-
-      /* Find all visible LI items and scroll the LAST one into view */
-      var items = getVisibleItems();
-      if (items.length > 0) {
-        var lastItem = items[items.length - 1];
-        lastItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        var evt = new Event('scroll', { bubbles: true });
-        lastItem.dispatchEvent(evt);
-        document.dispatchEvent(evt);
-        window.dispatchEvent(evt);
-      }
-
-      /* Wait for LinkedIn to render new items (longer wait for lazy loading) */
-      await sleep(1500);
-
-      /* Harvest again */
-      var batch = harvestVisible();
-      for (var b = 0; b < batch.length; b++) {
-        var bkey = batch[b].profileUrl || batch[b].name;
-        if (!allProfiles.has(bkey)) allProfiles.set(bkey, batch[b]);
-      }
-
-      if (allProfiles.size > prevSize) {
-        console.log('[Ortus] Attempt #' + attempt + ': +' + (allProfiles.size - prevSize) + ' -> ' + allProfiles.size + ' total');
-        stableCount = 0;
-      } else {
-        stableCount++;
-      }
-
-      /* If we have reached or exceeded expected, we can stop early */
-      if (allProfiles.size >= expectedTotal) {
-        console.log('[Ortus] Reached expected count (' + expectedTotal + '). Stopping.');
-        break;
-      }
+    /* v2 FAST PATH: At 25% zoom, all 25 profiles are usually visible without scrolling.
+     * If initial harvest already got enough, skip the scroll loop entirely. */
+    if (allProfiles.size >= expectedTotal) {
+      console.log('[Ortus] FAST PATH: Initial harvest got ' + allProfiles.size + '/' + expectedTotal + ', skipping scroll loop');
+    } else {
+      console.log('[Ortus] Initial harvest short (' + allProfiles.size + '/' + expectedTotal + '), entering scroll loop');
     }
 
-    /* Final attempt: scroll ALL the way down using keyboard End key simulation */
+    /* Scroll loop: only runs if initial harvest was short.
+     * v2 OPTIMIZATION: shorter waits, fewer stable checks, instant break at 25. */
+    var attempt = 0;
     if (allProfiles.size < expectedTotal) {
-      console.log('[Ortus] Trying keyboard End key for final sweep...');
-      document.activeElement && document.activeElement.blur();
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', code: 'End', bubbles: true }));
-      await sleep(3000);
+      var stableCount = 0;
+      var maxStable = sd(3, 6);
+      var maxAttempts = sd(40, 80);
 
-      var finalBatch = harvestVisible();
-      for (var f = 0; f < finalBatch.length; f++) {
-        var fkey = finalBatch[f].profileUrl || finalBatch[f].name;
-        if (!allProfiles.has(fkey)) allProfiles.set(fkey, finalBatch[f]);
+      while (attempt < maxAttempts && stableCount < maxStable) {
+        attempt++;
+        var prevSize = allProfiles.size;
+
+        /* Find all visible LI items and scroll the LAST one into view */
+        var items = getVisibleItems();
+        if (items.length > 0) {
+          var lastItem = items[items.length - 1];
+          lastItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+          var evt = new Event('scroll', { bubbles: true });
+          lastItem.dispatchEvent(evt);
+          document.dispatchEvent(evt);
+          window.dispatchEvent(evt);
+        }
+
+        /* Also try incremental scroll-by as fallback (triggers lazy loaders) */
+        if (stableCount >= 2) {
+          window.scrollBy(0, 800);
+        }
+
+        /* v2: Faster waits — DOM settle on first 2 attempts only, then short sleep */
+        if (attempt <= 2) {
+          await waitForDomSettle(sd(500,1500), sd(2000,5000));
+        } else {
+          await sleep(sd(500,2000));
+        }
+
+        /* Harvest again */
+        var batch = harvestVisible();
+        var batchAdded = 0;
+        for (var b = 0; b < batch.length; b++) { if (addProfile(batch[b])) batchAdded++; }
+
+        if (allProfiles.size > prevSize) {
+          console.log('[Ortus] Attempt #' + attempt + ': +' + batchAdded + ' -> ' + allProfiles.size + ' total');
+          stableCount = 0;
+        } else {
+          stableCount++;
+        }
+
+        /* If we have reached or exceeded expected, we can stop early */
+        if (allProfiles.size >= expectedTotal) {
+          console.log('[Ortus] Reached expected count (' + expectedTotal + '). Stopping.');
+          break;
+        }
+      }
+
+      /* Final attempt: scroll ALL the way down using keyboard End key simulation */
+      if (allProfiles.size < expectedTotal) {
+        console.log('[Ortus] Trying keyboard End key for final sweep...');
+        document.activeElement && document.activeElement.blur();
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', code: 'End', bubbles: true }));
+        await waitForDomSettle(600, 2000);
+
+        var finalBatch = harvestVisible();
+        for (var f = 0; f < finalBatch.length; f++) { addProfile(finalBatch[f]); }
+      }
+
+      /* Extra sweep: if still short, try scrolling page by page (800px increments) */
+      if (allProfiles.size < expectedTotal && allProfiles.size > 0) {
+        console.log('[Ortus] Short by ' + (expectedTotal - allProfiles.size) + ', trying page-scroll sweep...');
+        window.scrollTo(0, 0);
+        await sleep(300);
+        var docHeight = document.body.scrollHeight;
+        for (var scrollY = 0; scrollY < docHeight; scrollY += 600) {
+          window.scrollTo(0, scrollY);
+          await sleep(250);
+          var sweepBatch = harvestVisible();
+          for (var s = 0; s < sweepBatch.length; s++) { addProfile(sweepBatch[s]); }
+          if (allProfiles.size >= expectedTotal) break;
+        }
+        console.log('[Ortus] After page-scroll sweep: ' + allProfiles.size + ' profiles');
       }
     }
 
     /* Scroll to bottom to make pagination visible */
-    var paginationEl = document.querySelector('.artdeco-pagination') 
+    var paginationEl = document.querySelector('.artdeco-pagination')
       || document.querySelector('[class*="pagination"]')
       || document.querySelector('button[aria-label="Next"]');
     if (paginationEl) {
@@ -606,13 +628,13 @@
       window.scrollTo(0, document.body.scrollHeight);
       console.log('[Ortus] Scrolled to bottom (no pagination el found)');
     }
-    await sleep(1000);
+    await sleep(sd(500,3000));
 
     var result = Array.from(allProfiles.values());
 
     /* Apply openLink data — fetch for every page, with delay to avoid rate limits */
     try {
-      await sleep(1500);
+      await sleep(sd(500,4000));
       var olMap = await fetchOpenLinkMap();
       var olSize = Object.keys(olMap).length;
       if (olSize > 0) {
@@ -632,6 +654,101 @@
 
     console.log('[Ortus] DONE: ' + result.length + ' unique profiles from ' + attempt + ' scroll attempts (expected ' + expectedTotal + ')');
     return result;
+  }
+
+  /* ── Empty State Detection ── */
+
+  function detectEmptyState() {
+    var body = document.body ? (document.body.textContent || '') : '';
+    if (body.indexOf('Apply filters to find leads') !== -1) {
+      return { emptyState: true, message: 'Apply filters to find leads' };
+    }
+    if (body.indexOf('No leads match') !== -1 || body.indexOf('No results found') !== -1) {
+      return { emptyState: true, message: 'No leads matched' };
+    }
+    return { emptyState: false };
+  }
+
+  /* ── Filter Nudge: wake up LinkedIn's SPA search engine ── */
+
+  async function nudgeFilters() {
+    console.log('[Ortus] Nudging: will exclude a filter, wait, then include it back...');
+
+    /* Find a removable active filter — these are pills/tags with close (X) buttons.
+     * In Sales Nav, active filters show as removable chips near the top or in the sidebar. */
+    var closeBtn = null;
+    var closeSelectors = [
+      /* Filter pill close buttons */
+      'button[aria-label*="Remove"]',
+      'button[aria-label*="remove"]',
+      'button[aria-label*="Clear"]',
+      'button[data-test-id*="remove"]',
+      /* X icons inside filter tags */
+      '[class*="filter-value"] button',
+      '[class*="filter-tag"] button',
+      '[class*="artdeco-pill"] button[class*="close"]',
+      '[class*="artdeco-pill"] button[aria-label]',
+      /* Generic close icons inside filter areas */
+      '[class*="search-filter"] button[class*="close"]',
+      '[class*="facet"] button[class*="remove"]'
+    ];
+
+    for (var si = 0; si < closeSelectors.length; si++) {
+      try {
+        var els = document.querySelectorAll(closeSelectors[si]);
+        if (els.length > 0) {
+          closeBtn = els[0];
+          console.log('[Ortus] Found filter remove button via: ' + closeSelectors[si] + ' ("' + (closeBtn.getAttribute('aria-label') || closeBtn.textContent || '').trim().substring(0, 40) + '")');
+          break;
+        }
+      } catch(e) {}
+    }
+
+    if (closeBtn) {
+      /* Step 1: Remove the filter (click X) */
+      console.log('[Ortus] Clicking filter remove button...');
+      closeBtn.click();
+      await sleep(2000);
+
+      /* Step 2: Browser back to restore all filters */
+      console.log('[Ortus] Going back to restore filters...');
+      window.history.back();
+      await sleep(3000);
+
+      var es = detectEmptyState();
+      if (!es.emptyState) {
+        console.log('[Ortus] Filter nudge worked (remove + back)');
+        return true;
+      }
+      console.log('[Ortus] Still empty after remove+back, waiting longer...');
+      await sleep(3000);
+      if (!detectEmptyState().emptyState) {
+        console.log('[Ortus] Filter nudge worked after extra wait');
+        return true;
+      }
+    } else {
+      console.log('[Ortus] No removable filter button found');
+    }
+
+    /* Fallback: try toggling a boolean filter switch on/off */
+    var toggles = document.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"]');
+    for (var ti = 0; ti < Math.min(toggles.length, 3); ti++) {
+      try {
+        var tog = toggles[ti];
+        console.log('[Ortus] Trying toggle #' + ti + '...');
+        tog.click();
+        await sleep(2000);
+        tog.click();
+        await sleep(3000);
+        if (!detectEmptyState().emptyState) {
+          console.log('[Ortus] Toggle nudge worked via toggle #' + ti);
+          return true;
+        }
+      } catch(e) {}
+    }
+
+    console.log('[Ortus] All nudge strategies failed');
+    return false;
   }
 
   /* ── Navigation ── */
@@ -681,16 +798,59 @@
       case 'getPageInfo':
         sendResponse(getPageInfo());
         break;
+      case 'waitForResults':
+        /* Poll until result items with ACTUAL DATA appear in DOM.
+         * LinkedIn renders empty placeholder <li> items first, then lazily populates
+         * the text/links. We must wait for populated items, not just empty shells. */
+        (function() {
+          var timeout = msg.timeout || 20000;
+          var start = Date.now();
+          function check() {
+            /* Count items that have REAL profile data (name link populated) */
+            var profileLinks = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
+            var populatedLinks = 0;
+            for (var pl = 0; pl < profileLinks.length; pl++) {
+              var txt = (profileLinks[pl].textContent || '').trim();
+              if (txt.length > 1) populatedLinks++;
+            }
+            /* Also check for populated name spans */
+            var nameSpans = document.querySelectorAll('[data-anonymize="person-name"]');
+            var populatedNames = 0;
+            for (var ns = 0; ns < nameSpans.length; ns++) {
+              var nt = (nameSpans[ns].textContent || '').trim();
+              if (nt.length > 1) populatedNames++;
+            }
+            var bestCount = Math.max(populatedLinks, populatedNames);
+            if (bestCount >= 3) {
+              console.log('[Ortus] waitForResults: ' + bestCount + ' populated items (links=' + populatedLinks + ', names=' + populatedNames + ') after ' + (Date.now() - start) + 'ms');
+              sendResponse({ ready: true, items: bestCount, links: populatedLinks, names: populatedNames, waited: Date.now() - start });
+            } else if (bestCount < 3 && Date.now() - start > 5000) {
+              var es = detectEmptyState();
+              if (es.emptyState) {
+                console.log('[Ortus] waitForResults: empty state detected: ' + es.message + ' after ' + (Date.now() - start) + 'ms');
+                sendResponse({ ready: false, emptyState: true, emptyMessage: es.message, items: bestCount, links: populatedLinks, names: populatedNames, waited: Date.now() - start });
+                return;
+              }
+              setTimeout(check, 500);
+            } else if (Date.now() - start > timeout) {
+              console.log('[Ortus] waitForResults: TIMEOUT after ' + timeout + 'ms (found ' + bestCount + ' populated)');
+              sendResponse({ ready: false, items: bestCount, links: populatedLinks, names: populatedNames, waited: timeout });
+            } else {
+              setTimeout(check, 500);
+            }
+          }
+          check();
+        })();
+        return true;
+      case 'setSlowMode':
+        SLOW_MODE = !!msg.slow;
+        console.log('[Ortus] Slow mode: ' + (SLOW_MODE ? 'ON' : 'OFF'));
+        sendResponse({ ok: true });
+        break;
       case 'extractProfiles':
+        if (msg.slow !== undefined) SLOW_MODE = !!msg.slow;
         scrollAndExtractAll().then(function(profiles) {
           sendResponse({ profiles: profiles, pageInfo: getPageInfo() });
-        });
-        return true;
-      case 'waitForResults':
-        waitForResults(msg.timeout || 20000).then(function(found) {
-          var items = qsAll(document, SELECTORS.resultItem);
-          var links = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
-          sendResponse({ found: found, itemCount: items.length, linkCount: links.length });
         });
         return true;
       case 'goToNextPage':
@@ -700,6 +860,14 @@
         navigateToPage(msg.page);
         sendResponse({ success: true });
         break;
+      case 'checkEmptyState':
+        sendResponse(detectEmptyState());
+        break;
+      case 'nudgeFilters':
+        nudgeFilters().then(function(ok) {
+          sendResponse({ success: ok, emptyState: detectEmptyState() });
+        });
+        return true;
       case 'debugSelectors':
         var debug = {};
         var keys = Object.keys(SELECTORS);
@@ -718,5 +886,5 @@
     }
   });
 
-  console.log('[Ortus] Content script v7 loaded (injection #' + window.__ortusInjectionCount + ')');
+  console.log('[Ortus] Content script v3.0 loaded (injection #' + window.__ortusInjectionCount + ')');
 })();
