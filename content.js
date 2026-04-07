@@ -31,36 +31,41 @@
   var SLOW_MODE = false;
   function sd(fast, slow) { return SLOW_MODE ? slow : fast; }
 
-  /* ═══ openLink state — uses sessionStorage (survives SPA nav + full reload) ═══ */
+  /* ═══ v4.0 FETCH INTERCEPTOR: Capture LinkedIn's own API responses ═══
+   * Content scripts run in an ISOLATED world — they can't see LinkedIn's fetch.
+   * We inject a <script> tag into the MAIN world that monkey-patches fetch
+   * and posts intercepted data back to us via CustomEvent. */
   var openLinkCache = {};
-  var openLinkLastFetchedUrl = '';
-  var openLinkBaseUrl = '';
+  var apiEnrichCache = {}; /* memberId → {openLink, premium, company, title} */
 
-  function loadOpenLinkState() {
+  /* Listen for data from the main-world interceptor */
+  window.addEventListener('__ortus_api_data', function(e) {
     try {
-      var raw = sessionStorage.getItem('ortus_ol_state');
-      if (raw) {
-        var s = JSON.parse(raw);
-        if (s.baseUrl) openLinkBaseUrl = s.baseUrl;
-        if (s.lastUrl) openLinkLastFetchedUrl = s.lastUrl;
-        if (s.cache) openLinkCache = s.cache;
-        console.log('[Ortus] Restored openLink: ' + Object.keys(openLinkCache).length + ' cached, base=' + (openLinkBaseUrl ? openLinkBaseUrl.substring(0, 60) + '...' : 'none'));
+      var data = JSON.parse(e.detail);
+      if (data.elements) {
+        var newCount = 0;
+        for (var i = 0; i < data.elements.length; i++) {
+          var elem = data.elements[i];
+          var memberId = elem.memberId;
+          if (!memberId) continue;
+          if (!apiEnrichCache.hasOwnProperty(memberId)) newCount++;
+          apiEnrichCache[memberId] = elem;
+          openLinkCache[memberId] = elem.openLink;
+        }
+        if (data.total) exactTotalResults = data.total;
+        var openCount = 0; var premCount = 0;
+        for (var k in apiEnrichCache) { if (apiEnrichCache[k].openLink) openCount++; if (apiEnrichCache[k].premium) premCount++; }
+        console.log('[Ortus] INTERCEPTED: +' + newCount + ' profiles (' + data.elements.length + ' in response), cache: ' + Object.keys(apiEnrichCache).length + ' (' + openCount + ' open, ' + premCount + ' premium)');
       }
-    } catch(e) { console.log('[Ortus] loadOpenLinkState err:', e.message); }
-  }
+    } catch(err) { console.log('[Ortus] Intercept event error:', err.message); }
+  });
 
-  function saveOpenLinkState() {
-    try {
-      sessionStorage.setItem('ortus_ol_state', JSON.stringify({
-        baseUrl: openLinkBaseUrl,
-        lastUrl: openLinkLastFetchedUrl,
-        cache: openLinkCache
-      }));
-    } catch(e) { console.log('[Ortus] saveOpenLinkState err:', e.message); }
-  }
+  /* interceptor.js handles the MAIN world fetch patching via manifest content_scripts.
+   * It sends data back via CustomEvent AND stores on window.__ortusApiDataQueue.
+   * We check the queue first (data may have arrived before we loaded). */
 
-  /* Load on startup */
-  loadOpenLinkState();
+  /* DOM attribute check handles page 1 data. Events handle page 2+. */
+  console.log('[Ortus] Content script listening for interceptor events (apiEnrichCache ready)');
 
   /* Exact total from API — overrides the rounded "2K+" from the page */
   var exactTotalResults = 0;
@@ -317,112 +322,52 @@
       linkedinEmail: mid ? mid + '@linkedinmembership.id' : '',
       publicUrl: profileUrl ? profileUrl.replace('https://www.linkedin.com/sales/people/','https://www.linkedin.com/in/').replace('https://www.linkedin.com/sales/lead/','https://www.linkedin.com/in/').split(',')[0] : '',
       openProfile: isOpen ? 'Yes' : 'No',
+      premium: 'Unknown', /* v4.0: Will be set by API enrichment */
       scrapedAt: new Date().toISOString()
     };
   }
 
-  /* Fetch openLink data directly from LinkedIn's search API */
+  /* v4.0.7: Data comes from XHR interceptor (interceptor.js).
+   * LinkedIn uses XMLHttpRequest, not fetch. The interceptor patches XHR
+   * and sends data via CustomEvent. This function just reads the cache. */
   async function fetchOpenLinkMap() {
-    try {
-      var csrf = '';
-      document.cookie.split(';').forEach(function(c) {
-        var p = c.trim().split('=');
-        if (p[0] === 'JSESSIONID') csrf = p[1].replace(/"/g, '');
-      });
-      if (!csrf) { console.log('[Ortus] OL FAIL: No CSRF token'); return openLinkCache; }
-
-      /* Determine current page number for start offset */
-      var pageNum = 1;
-      var pp = parseInt(new URLSearchParams(window.location.search).get('page'), 10);
-      if (!isNaN(pp) && pp > 0) pageNum = pp;
-      var startOffset = (pageNum - 1) * 25;
-
-      /* Step 1: Capture the base API URL (strip any start/count params) */
-      var strategy = '';
-      if (!openLinkBaseUrl) {
-        var entries = performance.getEntriesByType('resource').map(function(r) { return r.name; });
-        var searchUrls = entries.filter(function(u) { return u.indexOf('salesApiLeadSearch') !== -1; });
-        if (searchUrls.length > 0) {
-          /* Strip start=, count= params and trailing & to get clean base */
-          var raw = searchUrls[searchUrls.length - 1];
-          openLinkBaseUrl = raw.replace(/[&?]start=\d+/g, '').replace(/[&?]count=\d+/g, '');
-          saveOpenLinkState();
-          console.log('[Ortus] OL: saved base URL (' + openLinkBaseUrl.length + ' chars)');
-        }
-        /* Fallback: construct from page URL */
-        if (!openLinkBaseUrl) {
-          var qMatch = window.location.href.match(/[?&]query=([^&]+)/);
-          if (qMatch) {
-            openLinkBaseUrl = 'https://www.linkedin.com/sales-api/salesApiLeadSearch?q=searchQuery&query=' + qMatch[1];
-            var params = new URLSearchParams(window.location.search);
-            params.forEach(function(v, k) {
-              if (k !== 'query' && k !== 'page' && k !== 'start' && k !== 'count') {
-                openLinkBaseUrl += '&' + k + '=' + encodeURIComponent(v);
-              }
-            });
-            saveOpenLinkState();
-            console.log('[Ortus] OL: constructed base URL from page params');
+    var cacheSize = Object.keys(apiEnrichCache).length;
+    if (cacheSize > 0) {
+      var oc = 0; var pc = 0;
+      for (var k in apiEnrichCache) { if (apiEnrichCache[k].openLink) oc++; if (apiEnrichCache[k].premium) pc++; }
+      console.log('[Ortus] Enrichment cache: ' + cacheSize + ' profiles (' + oc + ' open, ' + pc + ' premium)');
+    } else {
+      /* Check DOM attribute first (shared between MAIN and ISOLATED worlds — works for page 1) */
+      var domData = document.documentElement.getAttribute('data-ortus-api');
+      if (domData) {
+        try {
+          var parsed = JSON.parse(domData);
+          if (parsed.elements) {
+            for (var di = 0; di < parsed.elements.length; di++) {
+              var de = parsed.elements[di];
+              if (de.memberId) { apiEnrichCache[de.memberId] = de; openLinkCache[de.memberId] = de.openLink; }
+            }
+            if (parsed.total) exactTotalResults = parsed.total;
+            console.log('[Ortus] Enrichment loaded from DOM attribute: ' + Object.keys(apiEnrichCache).length + ' profiles');
           }
+        } catch(e) {}
+      }
+      if (Object.keys(apiEnrichCache).length === 0) {
+      console.log('[Ortus] Enrichment cache empty — waiting for XHR interceptor data...');
+      for (var w = 0; w < 10; w++) {
+        await sleep(500);
+        if (Object.keys(apiEnrichCache).length > 0) {
+          var oc2 = 0; var pc2 = 0;
+          for (var k2 in apiEnrichCache) { if (apiEnrichCache[k2].openLink) oc2++; if (apiEnrichCache[k2].premium) pc2++; }
+          console.log('[Ortus] Enrichment cache filled after ' + ((w+1)*500) + 'ms: ' + Object.keys(apiEnrichCache).length + ' profiles (' + oc2 + ' open, ' + pc2 + ' premium)');
+          break;
         }
       }
-
-      if (!openLinkBaseUrl) {
-        console.log('[Ortus] OL FAIL page ' + pageNum + ': could not determine base URL');
-        return openLinkCache;
+      if (Object.keys(apiEnrichCache).length === 0) {
+        console.log('[Ortus] Enrichment cache still empty after 5s wait');
       }
-
-      /* Step 2: Append start + count for THIS page */
-      var sep = openLinkBaseUrl.indexOf('?') !== -1 ? '&' : '?';
-      var url = openLinkBaseUrl + sep + 'start=' + startOffset + '&count=25';
-      strategy = 'base+start=' + startOffset;
-
-      /* Skip if exact same URL (same page re-harvest within one extractProfiles call) */
-      if (url === openLinkLastFetchedUrl) {
-        console.log('[Ortus] OL page ' + pageNum + ': same URL, returning cache (' + Object.keys(openLinkCache).length + ')');
-        return openLinkCache;
       }
-
-      console.log('[Ortus] OL page ' + pageNum + ' via ' + strategy + ' — fetching...');
-      var resp = await fetch(url, {
-        credentials: 'include',
-        headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0' }
-      });
-      if (resp.status === 429) {
-        console.log('[Ortus] OL page ' + pageNum + ': rate limited (429), waiting 10s...');
-        await sleep(10000);
-        resp = await fetch(url, { credentials: 'include', headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0' } });
-        if (resp.status !== 200) { console.log('[Ortus] OL page ' + pageNum + ': still 429 after wait'); return openLinkCache; }
-      }
-      if (resp.status !== 200) { console.log('[Ortus] OL page ' + pageNum + ': HTTP ' + resp.status); return openLinkCache; }
-      var text = await resp.text();
-      /* Extract exact total count from API response */
-      var totalMatch = text.match(/"total"\s*:\s*(\d+)/);
-      if (totalMatch) {
-        var apiTotal = parseInt(totalMatch[1], 10);
-        if (apiTotal > 0 && apiTotal < 100000) {
-          exactTotalResults = apiTotal;
-          console.log('[Ortus] OL: exact total from API = ' + apiTotal);
-        }
-      }
-      var newCount = 0;
-      var re = /urn:li:member:(\d+)/g;
-      var match;
-      while ((match = re.exec(text)) !== null) {
-        var memberId = match[1];
-        var start = Math.max(0, match.index - 300);
-        var end = Math.min(text.length, match.index + 300);
-        var chunk = text.substring(start, end);
-        var olMatch = chunk.match(/"openLink"\s*:\s*(true|false)/);
-        if (olMatch) {
-          if (!openLinkCache.hasOwnProperty(memberId)) newCount++;
-          openLinkCache[memberId] = olMatch[1] === 'true';
-        }
-      }
-      openLinkLastFetchedUrl = url;
-      saveOpenLinkState();
-      var openCount = 0; for (var k in openLinkCache) { if (openLinkCache[k]) openCount++; }
-      console.log('[Ortus] OL page ' + pageNum + ': +' + newCount + ' new, ' + Object.keys(openLinkCache).length + ' total (' + openCount + ' open), via ' + strategy);
-    } catch(e) { console.log('[Ortus] OL FAIL: ' + e.message); }
+    }
     return openLinkCache;
   }
 
@@ -632,25 +577,45 @@
 
     var result = Array.from(allProfiles.values());
 
-    /* Apply openLink data — fetch for every page, with delay to avoid rate limits */
+    /* v4.0: Apply API enrichment data — openLink, premium, and fill missing company/title */
     try {
       await sleep(sd(500,4000));
       var olMap = await fetchOpenLinkMap();
-      var olSize = Object.keys(olMap).length;
-      if (olSize > 0) {
-        var matched = 0;
+      var enrichSize = Object.keys(apiEnrichCache).length;
+      if (enrichSize > 0) {
+        var matched = 0; var companyFills = 0; var titleFills = 0;
         for (var oi = 0; oi < result.length; oi++) {
           var mid = result[oi].membershipId;
-          if (mid && olMap.hasOwnProperty(mid)) {
-            result[oi].openProfile = olMap[mid] ? 'Yes' : 'No';
+          if (mid && apiEnrichCache.hasOwnProperty(mid)) {
+            var enrich = apiEnrichCache[mid];
+            result[oi].openProfile = enrich.openLink ? 'Yes' : 'No';
+            result[oi].premium = enrich.premium ? 'Yes' : 'No';
+            /* Fill missing company from API */
+            if ((!result[oi].company || result[oi].company.length < 2) && enrich.company) {
+              result[oi].company = enrich.company;
+              companyFills++;
+            }
+            /* Fill missing title from API */
+            if ((!result[oi].jobTitle || result[oi].jobTitle.length < 2) && enrich.title) {
+              result[oi].jobTitle = enrich.title;
+              titleFills++;
+            }
             matched++;
+          } else if (mid && olMap.hasOwnProperty(mid)) {
+            /* Fallback to old openLink-only cache */
+            result[oi].openProfile = olMap[mid] ? 'Yes' : 'No';
+            result[oi].premium = 'Unknown';
+            matched++;
+          } else {
+            result[oi].premium = 'Unknown';
           }
         }
-        console.log('[Ortus] OL applied: ' + matched + '/' + result.length + ' matched (cache: ' + olSize + ', injection #' + (window.__ortusInjectionCount || '?') + ')');
+        console.log('[Ortus] Enrichment applied: ' + matched + '/' + result.length + ' matched, ' + companyFills + ' company fills, ' + titleFills + ' title fills (cache: ' + enrichSize + ')');
       } else {
-        console.log('[Ortus] OL: empty cache, no openLink data applied (injection #' + (window.__ortusInjectionCount || '?') + ')');
+        console.log('[Ortus] Enrichment: empty cache, no API data applied');
+        for (var ui = 0; ui < result.length; ui++) result[ui].premium = 'Unknown';
       }
-    } catch(e) { console.log('[Ortus] OL apply error:', e.message); }
+    } catch(e) { console.log('[Ortus] Enrichment apply error:', e.message); }
 
     console.log('[Ortus] DONE: ' + result.length + ' unique profiles from ' + attempt + ' scroll attempts (expected ' + expectedTotal + ')');
     return result;
@@ -886,5 +851,5 @@
     }
   });
 
-  console.log('[Ortus] Content script v3.0 loaded (injection #' + window.__ortusInjectionCount + ')');
+  console.log('[Ortus] Content script v4.0.12 Easter loaded (injection #' + window.__ortusInjectionCount + ')');
 })();

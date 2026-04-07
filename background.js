@@ -700,9 +700,72 @@ async function sendSheet(profiles,pg,sheetUrl,sheetName){
 }
 
 async function writeBackLink(srcUrl,srcTab,row,col,value){
+  /* Try direct Google Sheets API first (uses user's own Google account) */
+  try{
+    var result=await writeBackDirect(srcUrl,srcTab,row,col,value);
+    if(result)return result;
+  }catch(e){addLog('warn','Direct write-back failed: '+e.message+', falling back to Apps Script');}
+  /* Fallback to Apps Script */
   var payload={action:'writeBackLink',sheetUrl:srcUrl,tabName:srcTab,row:row,col:col,value:value};
   try{var r=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});return await r.json();}
   catch(e){addLog('error','WriteBack err: '+e.message);return null;}
+}
+
+/* ─── DIRECT GOOGLE SHEETS API (uses user's own OAuth token) ─── */
+function extractSheetId(url){
+  var m=url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return m?m[1]:null;
+}
+
+function colIdxToLetter(idx){
+  /* Convert 1-based column index to letter: 1=A, 2=B, 27=AA */
+  var s='';
+  while(idx>0){idx--;s=String.fromCharCode(65+(idx%26))+s;idx=Math.floor(idx/26);}
+  return s;
+}
+
+async function getGoogleToken(){
+  return new Promise(function(resolve,reject){
+    chrome.identity.getAuthToken({interactive:true},function(token){
+      if(chrome.runtime.lastError){
+        reject(new Error(chrome.runtime.lastError.message));
+      }else{
+        resolve(token);
+      }
+    });
+  });
+}
+
+async function writeBackDirect(srcUrl,srcTab,row,col,value){
+  var sheetId=extractSheetId(srcUrl);
+  if(!sheetId){addLog('warn','Could not extract sheet ID from: '+srcUrl);return null;}
+  var token=await getGoogleToken();
+  if(!token){addLog('warn','No Google token available');return null;}
+  var colLetter=colIdxToLetter(col);
+  var range=encodeURIComponent("'"+srcTab+"'!"+colLetter+row);
+  var apiUrl='https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+range+'?valueInputOption=USER_ENTERED';
+  var resp=await fetch(apiUrl,{
+    method:'PUT',
+    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({range:"'"+srcTab+"'!"+colLetter+row,majorDimension:'ROWS',values:[[value]]})
+  });
+  if(resp.status===401){
+    /* Token expired — clear and retry once */
+    addLog('info','Google token expired, refreshing...');
+    await new Promise(function(resolve){chrome.identity.removeCachedAuthToken({token:token},resolve);});
+    token=await getGoogleToken();
+    resp=await fetch(apiUrl,{
+      method:'PUT',
+      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({range:"'"+srcTab+"'!"+colLetter+row,majorDimension:'ROWS',values:[[value]]})
+    });
+  }
+  if(!resp.ok){
+    var errText=await resp.text();
+    throw new Error('Sheets API '+resp.status+': '+errText.substring(0,200));
+  }
+  addLog('info','Direct write-back OK: '+srcTab+'!'+colLetter+row);
+  return{success:true};
 }
 
 /* ─── HELPERS ─── */
@@ -729,8 +792,8 @@ function waitNav(tid,to){
 
 function toCSV(ps){
   if(!ps.length)return '';
-  var h=['Record ID','First Name','Last Name','Domain','Priority (Company)','Priority (Role)','Priority','Lead Status','Company Name','Job Title','Linkedin Bio','First Phone','First Phone Value','Phone Number','Whatsapp Link','Mobile Phone Number','Email','Email Verification','LinkedIn Membership ID','Location','Notes','Secondary Email','Hubspot URL','Ortus Members','Current Tag','Open Profile','Linkedin First Connection','Client Lead Status','Apollo Contact ID'];
-  var rows=ps.map(function(p){return['',p.firstName||'',p.lastName||'','','','','','',p.company||'',p.jobTitle||'',p.publicUrl||p.profileUrl||'','','','','','',p.linkedinEmail||'','',(p.membershipId||'').toString(),p.location||'','','','','','',p.openProfile||'No','','',''].map(function(v){return '"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');});
+  var h=['Record ID','First Name','Last Name','Domain','Priority (Company)','Priority (Role)','Priority','Lead Status','Company Name','Job Title','Linkedin Bio','First Phone','First Phone Value','Phone Number','Whatsapp Link','Mobile Phone Number','Email','Email Verification','LinkedIn Membership ID','Location','Notes','Secondary Email','Hubspot URL','Ortus Members','Current Tag','Open Profile','Premium','Linkedin First Connection','Client Lead Status','Apollo Contact ID'];
+  var rows=ps.map(function(p){return['',p.firstName||'',p.lastName||'','','','','','',p.company||'',p.jobTitle||'',p.publicUrl||p.profileUrl||'','','','','','',p.linkedinEmail||'','',(p.membershipId||'').toString(),p.location||'','','','','','',p.openProfile||'No',p.premium||'Unknown','','',''].map(function(v){return '"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');});
   return[h.join(',')].concat(rows).join('\n');
 }
 
