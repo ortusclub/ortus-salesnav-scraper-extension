@@ -71,5 +71,11 @@
     return _origOpen.apply(this, arguments);
   };
 
-  console.log('[Ortus] Interceptor v4.0.10 installed (parallel fetch on XHR detect)');
+  /* Allow content script to reset dedup after a nudge so page 1 can be re-intercepted */
+  window.addEventListener('__ortus_reset_interceptor', function() {
+    fetchedUrls = {};
+    console.log('[Ortus] Interceptor dedup reset (nudge recovery)');
+  });
+
+  console.log('[Ortus] Interceptor v4.0.11 installed (parallel fetch on XHR detect)');
 })();

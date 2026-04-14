@@ -330,13 +330,17 @@
   /* v4.0.7: Data comes from XHR interceptor (interceptor.js).
    * LinkedIn uses XMLHttpRequest, not fetch. The interceptor patches XHR
    * and sends data via CustomEvent. This function just reads the cache. */
-  async function fetchOpenLinkMap() {
+  async function fetchOpenLinkMap(cacheSizeBefore) {
     var cacheSize = Object.keys(apiEnrichCache).length;
-    if (cacheSize > 0) {
+    var needsPoll = (cacheSize === 0) || (typeof cacheSizeBefore === 'number' && cacheSize <= cacheSizeBefore);
+
+    if (cacheSize > 0 && !needsPoll) {
       var oc = 0; var pc = 0;
       for (var k in apiEnrichCache) { if (apiEnrichCache[k].openLink) oc++; if (apiEnrichCache[k].premium) pc++; }
       console.log('[Ortus] Enrichment cache: ' + cacheSize + ' profiles (' + oc + ' open, ' + pc + ' premium)');
-    } else {
+    }
+
+    if (cacheSize === 0) {
       /* Check DOM attribute first (shared between MAIN and ISOLATED worlds — works for page 1) */
       var domData = document.documentElement.getAttribute('data-ortus-api');
       if (domData) {
@@ -349,23 +353,29 @@
             }
             if (parsed.total) exactTotalResults = parsed.total;
             console.log('[Ortus] Enrichment loaded from DOM attribute: ' + Object.keys(apiEnrichCache).length + ' profiles');
+            needsPoll = false;
           }
         } catch(e) {}
       }
-      if (Object.keys(apiEnrichCache).length === 0) {
-      console.log('[Ortus] Enrichment cache empty — waiting for XHR interceptor data...');
-      for (var w = 0; w < 10; w++) {
-        await sleep(500);
-        if (Object.keys(apiEnrichCache).length > 0) {
+    }
+
+    if (needsPoll) {
+      var pollCount = SLOW_MODE ? 20 : 10;
+      var pollMs = SLOW_MODE ? 1000 : 500;
+      var reason = cacheSize === 0 ? 'empty cache' : 'waiting for current page data (cache=' + cacheSize + ', before=' + cacheSizeBefore + ')';
+      console.log('[Ortus] Enrichment poll: ' + reason + ' (' + (pollCount * pollMs / 1000) + 's max, slow=' + SLOW_MODE + ')...');
+      for (var w = 0; w < pollCount; w++) {
+        await sleep(pollMs);
+        var nowSize = Object.keys(apiEnrichCache).length;
+        if (nowSize > cacheSizeBefore) {
           var oc2 = 0; var pc2 = 0;
           for (var k2 in apiEnrichCache) { if (apiEnrichCache[k2].openLink) oc2++; if (apiEnrichCache[k2].premium) pc2++; }
-          console.log('[Ortus] Enrichment cache filled after ' + ((w+1)*500) + 'ms: ' + Object.keys(apiEnrichCache).length + ' profiles (' + oc2 + ' open, ' + pc2 + ' premium)');
+          console.log('[Ortus] Enrichment cache grew to ' + nowSize + ' after ' + ((w+1)*pollMs) + 'ms (' + oc2 + ' open, ' + pc2 + ' premium)');
           break;
         }
       }
-      if (Object.keys(apiEnrichCache).length === 0) {
-        console.log('[Ortus] Enrichment cache still empty after 5s wait');
-      }
+      if (Object.keys(apiEnrichCache).length <= cacheSizeBefore) {
+        console.log('[Ortus] Enrichment cache did not grow after ' + (pollCount * pollMs / 1000) + 's wait (still ' + Object.keys(apiEnrichCache).length + ')');
       }
     }
     return openLinkCache;
@@ -579,8 +589,9 @@
 
     /* v4.0: Apply API enrichment data — openLink, premium, and fill missing company/title */
     try {
-      await sleep(sd(500,4000));
-      var olMap = await fetchOpenLinkMap();
+      var cacheSizeBefore = Object.keys(apiEnrichCache).length;
+      await sleep(sd(500,8000));
+      var olMap = await fetchOpenLinkMap(cacheSizeBefore);
       var enrichSize = Object.keys(apiEnrichCache).length;
       if (enrichSize > 0) {
         var matched = 0; var companyFills = 0; var titleFills = 0;
@@ -694,6 +705,11 @@
     } else {
       console.log('[Ortus] No removable filter button found');
     }
+
+    /* Reset interceptor dedup so it can re-capture page 1 data after nudge */
+    try { window.dispatchEvent(new CustomEvent('__ortus_reset_interceptor')); } catch(e) {}
+    /* Also clear DOM attribute that may have stale data */
+    try { document.documentElement.removeAttribute('data-ortus-api'); } catch(e) {}
 
     /* Fallback: try toggling a boolean filter switch on/off */
     var toggles = document.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"]');
@@ -851,5 +867,5 @@
     }
   });
 
-  console.log('[Ortus] Content script v4.0.12 Easter loaded (injection #' + window.__ortusInjectionCount + ')');
+  console.log('[Ortus] Content script v4.0.18 Easter loaded (injection #' + window.__ortusInjectionCount + ')');
 })();

@@ -1,8 +1,8 @@
 var WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyW3i2O8ZOCO1mpGmUnu2sLeCXWI9n0HrFCE8ZZ2dzf27SRVNELKL85vxpKLM0-b3_k/exec";
 var DELAY_MIN_FAST = 2000;
 var DELAY_MAX_FAST = 4000;
-var DELAY_MIN_SLOW = 3000;
-var DELAY_MAX_SLOW = 5000;
+var DELAY_MIN_SLOW = 6000;
+var DELAY_MAX_SLOW = 10000;
 var SLOW_MODE = false; /* Toggled from popup for older machines */
 /* Load slow mode setting on startup */
 chrome.storage.local.get('ortus_slow_mode',function(d){ if(d) SLOW_MODE=!!d.ortus_slow_mode; });
