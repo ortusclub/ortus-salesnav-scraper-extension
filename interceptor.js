@@ -1,12 +1,12 @@
-/* Ortus v4.0.10 — Parallel fetch approach.
- * LinkedIn's XHR objects get discarded before completing.
- * When we detect salesApiLeadSearch XHR.open(), we make our OWN
- * parallel fetch() call to the same URL (proven to return 200). */
+/* Ortus v4.2.0 — Read XHR response directly instead of re-fetching.
+ * LinkedIn now uses POST for salesApiLeadSearch, so re-fetching the URL
+ * without the request body returns 400. Instead, we patch XHR.open to
+ * tag matching requests, then patch XHR.send to read the response
+ * when it completes. */
 (function() {
   if (window.__ortusInterceptorInstalled) return;
   window.__ortusInterceptorInstalled = true;
   if (!window.__ortusApiDataQueue) window.__ortusApiDataQueue = [];
-  var fetchedUrls = {};
 
   function processResponse(text) {
     try {
@@ -26,56 +26,67 @@
           });
         }
         window.__ortusApiDataQueue.push(extracted);
-        window.dispatchEvent(new CustomEvent('__ortus_api_data', { detail: JSON.stringify(extracted) }));
-        /* Also store on DOM (shared between MAIN and ISOLATED worlds) for page 1 timing */
+        document.dispatchEvent(new CustomEvent('__ortus_api_data', { detail: JSON.stringify(extracted) }));
         try { document.documentElement.setAttribute('data-ortus-api', JSON.stringify(extracted)); } catch(e) {}
         var ol = extracted.elements.filter(function(e){return e.openLink;}).length;
         var pr = extracted.elements.filter(function(e){return e.premium;}).length;
         console.log('[Ortus] INTERCEPTED: ' + extracted.elements.length + ' profiles (' + ol + ' open, ' + pr + ' premium)');
       }
-    } catch(err) {}
+    } catch(err) { console.log('[Ortus] processResponse error:', err.message); }
   }
 
-  /* Get CSRF token from cookies */
-  function getCsrf() {
-    var match = document.cookie.match(/JSESSIONID="?([^";]+)/);
-    return match ? match[1] : '';
-  }
-
-  /* When XHR.open detects salesApiLeadSearch, make our own parallel fetch */
+  /* Patch XHR.open — tag requests that match salesApiLeadSearch */
   var _origOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
     var fullUrl = (url || '').toString();
-    if (fullUrl.indexOf('salesApiLeadSearch') !== -1 && fullUrl.indexOf('searchQuery') !== -1) {
-      /* Deduplicate — use start param as key (URL is 3000+ chars, start= differs per page) */
-      var startMatch = fullUrl.match(/start=(\d+)/);
-      var urlKey = startMatch ? startMatch[1] : fullUrl.length.toString();
-      if (!fetchedUrls[urlKey]) {
-        fetchedUrls[urlKey] = true;
-        var csrf = getCsrf();
-        console.log('[Ortus] Detected salesApiLeadSearch — making parallel fetch (csrf=' + (csrf ? 'yes' : 'NO') + ')');
-        fetch(fullUrl, {
-          credentials: 'include',
-          headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0' }
-        }).then(function(r) {
-          console.log('[Ortus] Parallel fetch status: ' + r.status);
-          if (r.ok) return r.text();
-          return null;
-        }).then(function(text) {
-          if (text) processResponse(text);
-        }).catch(function(err) {
-          console.log('[Ortus] Parallel fetch error: ' + err.message);
-        });
-      }
+    if (fullUrl.indexOf('salesApiLeadSearch') !== -1) {
+      this.__ortusIsLeadSearch = true;
+      console.log('[Ortus] Tagged salesApiLeadSearch XHR (' + method + ')');
     }
     return _origOpen.apply(this, arguments);
   };
 
-  /* Allow content script to reset dedup after a nudge so page 1 can be re-intercepted */
+  /* Patch XHR.send — add load listener to read response from tagged requests */
+  var _origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function() {
+    if (this.__ortusIsLeadSearch) {
+      var xhr = this;
+      xhr.addEventListener('load', function() {
+        try {
+          if (xhr.status === 200) {
+            if (xhr.responseType === 'blob' && xhr.response instanceof Blob) {
+              /* LinkedIn uses responseType='blob' — convert to text */
+              var reader = new FileReader();
+              reader.onload = function() {
+                console.log('[Ortus] Reading salesApiLeadSearch blob response (' + reader.result.length + ' bytes)');
+                processResponse(reader.result);
+              };
+              reader.readAsText(xhr.response);
+            } else if (xhr.responseType === '' || xhr.responseType === 'text') {
+              console.log('[Ortus] Reading salesApiLeadSearch text response (' + xhr.responseText.length + ' bytes)');
+              processResponse(xhr.responseText);
+            } else if (xhr.responseType === 'arraybuffer' && xhr.response) {
+              var text = new TextDecoder().decode(xhr.response);
+              console.log('[Ortus] Reading salesApiLeadSearch arraybuffer response (' + text.length + ' bytes)');
+              processResponse(text);
+            } else {
+              console.log('[Ortus] salesApiLeadSearch unknown responseType: ' + xhr.responseType);
+            }
+          } else {
+            console.log('[Ortus] salesApiLeadSearch returned status ' + xhr.status);
+          }
+        } catch(e) {
+          console.log('[Ortus] Error reading XHR response:', e.message);
+        }
+      });
+    }
+    return _origSend.apply(this, arguments);
+  };
+
+  /* Allow content script to reset state after a nudge */
   window.addEventListener('__ortus_reset_interceptor', function() {
-    fetchedUrls = {};
-    console.log('[Ortus] Interceptor dedup reset (nudge recovery)');
+    console.log('[Ortus] Interceptor reset (nudge recovery)');
   });
 
-  console.log('[Ortus] Interceptor v4.0.11 installed (parallel fetch on XHR detect)');
+  console.log('[Ortus] Interceptor v4.2.0 installed (direct XHR response reading)');
 })();

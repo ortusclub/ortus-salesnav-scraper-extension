@@ -22,10 +22,10 @@ function handleWrite(p) {
   var tab=p.tabName||"Sheet1";
   var sh=ss.getSheetByName(tab); if(!sh) sh=ss.insertSheet(tab);
   if(sh.getLastRow()===0){
-    var h=["Record ID","First Name","Last Name","Domain","Priority (Company)","Priority (Role)","Priority","Lead Status","Company Name","Job Title","Linkedin Bio","First Phone","First Phone Value","Phone Number","Whatsapp Link","Mobile Phone Number","Email","Email Verification","LinkedIn Membership ID","Location","Notes","Secondary Email","Hubspot URL","Ortus Members","Current Tag","Open Profile","Linkedin First Connection","Client Lead Status","Apollo Contact ID"];
+    var h=["Record ID","First Name","Last Name","Domain","Priority (Company)","Priority (Role)","Priority","Lead Status","Company Name","Job Title","Linkedin Bio","First Phone","First Phone Value","Phone Number","Whatsapp Link","Mobile Phone Number","Email","Email Verification","LinkedIn Membership ID","Location","Notes","Secondary Email","Hubspot URL","Ortus Members","Current Tag","Open Profile","Premium","Linkedin First Connection","Client Lead Status","Apollo Contact ID","ID Check"];
     sh.appendRow(h);sh.getRange(1,1,1,h.length).setFontWeight("bold");sh.setFrozenRows(1);
   }
-  var rows=p.profiles.map(function(r){return["",r.firstName||"",r.lastName||"","","","","","",r.company||"",r.jobTitle||"",r.publicUrl||r.profileUrl||"","","","","","",r.linkedinEmail||"","",(r.membershipId||"").toString(),r.location||"","","","","","",r.openProfile||"No","","",""]});
+  var rows=p.profiles.map(function(r){return["",r.firstName||"",r.lastName||"","","","","","",r.company||"",r.jobTitle||"",r.publicUrl||r.profileUrl||"","","","","","",r.linkedinEmail||"","",(r.membershipId||"").toString(),r.location||"","","","","","",r.openProfile||"No",r.premium||"Unknown","","","",r.idUnverified||""]});
   var start=sh.getLastRow()+1;
   sh.getRange(start,1,rows.length,rows[0].length).setValues(rows);
   return jr({success:true,rowsWritten:rows.length});
