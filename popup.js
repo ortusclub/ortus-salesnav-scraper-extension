@@ -3,6 +3,10 @@ var batchColData=null; /* {headers:[], sampleRows:[], allRows:[], srcUrl:'', src
 var batchTabs=null; /* [{name,rows,cols}] */
 
 document.addEventListener('DOMContentLoaded',function(){
+  /* Show version from manifest */
+  var verEl=document.getElementById('app-version');
+  if(verEl){var m=chrome.runtime.getManifest();verEl.textContent='v'+m.version;}
+
   /* Single */
   $('tab-single').addEventListener('click',function(){switchTab('single');});
   $('tab-batch').addEventListener('click',function(){switchTab('batch');});

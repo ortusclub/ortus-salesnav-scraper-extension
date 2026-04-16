@@ -38,8 +38,9 @@
   var openLinkCache = {};
   var apiEnrichCache = {}; /* memberId → {openLink, premium, company, title} */
 
-  /* Listen for data from the main-world interceptor */
-  window.addEventListener('__ortus_api_data', function(e) {
+  /* Listen for data from the main-world interceptor (use document, not window,
+   * because document is shared across MAIN and ISOLATED worlds in MV3) */
+  document.addEventListener('__ortus_api_data', function(e) {
     try {
       var data = JSON.parse(e.detail);
       if (data.elements) {
@@ -330,7 +331,7 @@
   /* v4.0.7: Data comes from XHR interceptor (interceptor.js).
    * LinkedIn uses XMLHttpRequest, not fetch. The interceptor patches XHR
    * and sends data via CustomEvent. This function just reads the cache. */
-  async function fetchOpenLinkMap(cacheSizeBefore) {
+  async function fetchOpenLinkMap(cacheSizeBefore, expectedCount) {
     var cacheSize = Object.keys(apiEnrichCache).length;
     var needsPoll = (cacheSize === 0) || (typeof cacheSizeBefore === 'number' && cacheSize <= cacheSizeBefore);
 
@@ -360,18 +361,49 @@
     }
 
     if (needsPoll) {
-      var pollCount = SLOW_MODE ? 20 : 10;
+      /* Poll until cache covers the expected result count (not just "grew at all").
+       * Previous logic exited on first growth, leaving later pages as Unknown. */
+      var pollCount = SLOW_MODE ? 40 : 30;
       var pollMs = SLOW_MODE ? 1000 : 500;
-      var reason = cacheSize === 0 ? 'empty cache' : 'waiting for current page data (cache=' + cacheSize + ', before=' + cacheSizeBefore + ')';
+      var target = (typeof expectedCount === 'number' && expectedCount > 0) ? expectedCount : 0;
+      var reason = cacheSize === 0 ? 'empty cache' : 'waiting for full coverage (cache=' + cacheSize + ', before=' + cacheSizeBefore + ', target=' + target + ')';
       console.log('[Ortus] Enrichment poll: ' + reason + ' (' + (pollCount * pollMs / 1000) + 's max, slow=' + SLOW_MODE + ')...');
+      var lastSize = cacheSize;
+      var stagnantTicks = 0;
       for (var w = 0; w < pollCount; w++) {
         await sleep(pollMs);
+        /* Check DOM attribute each poll tick (shared across MAIN/ISOLATED worlds) */
+        try {
+          var domData = document.documentElement.getAttribute('data-ortus-api');
+          if (domData) {
+            var parsed = JSON.parse(domData);
+            if (parsed.elements) {
+              for (var di = 0; di < parsed.elements.length; di++) {
+                var de = parsed.elements[di];
+                if (de.memberId && !apiEnrichCache.hasOwnProperty(de.memberId)) {
+                  apiEnrichCache[de.memberId] = de;
+                  openLinkCache[de.memberId] = de.openLink;
+                }
+              }
+              if (parsed.total) exactTotalResults = parsed.total;
+            }
+          }
+        } catch(e) {}
         var nowSize = Object.keys(apiEnrichCache).length;
-        if (nowSize > cacheSizeBefore) {
+        if (target > 0 && nowSize >= target) {
           var oc2 = 0; var pc2 = 0;
           for (var k2 in apiEnrichCache) { if (apiEnrichCache[k2].openLink) oc2++; if (apiEnrichCache[k2].premium) pc2++; }
-          console.log('[Ortus] Enrichment cache grew to ' + nowSize + ' after ' + ((w+1)*pollMs) + 'ms (' + oc2 + ' open, ' + pc2 + ' premium)');
+          console.log('[Ortus] Enrichment cache reached target ' + nowSize + '/' + target + ' after ' + ((w+1)*pollMs) + 'ms (' + oc2 + ' open, ' + pc2 + ' premium)');
           break;
+        }
+        if (nowSize > lastSize) { lastSize = nowSize; stagnantTicks = 0; }
+        else if (nowSize > cacheSizeBefore) {
+          stagnantTicks++;
+          /* If we have some data and it's been stagnant for ~3s, accept what we have */
+          if (stagnantTicks * pollMs >= 3000) {
+            console.log('[Ortus] Enrichment cache stagnant at ' + nowSize + '/' + (target || '?') + ' after ' + ((w+1)*pollMs) + 'ms — accepting partial');
+            break;
+          }
         }
       }
       if (Object.keys(apiEnrichCache).length <= cacheSizeBefore) {
@@ -395,7 +427,14 @@
       }
     }
 
-    var links = document.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
+    /* Fallback: look for profile links NOT caught by resultItem selectors,
+     * but ONLY within the main search results container (not sidebar/recommendations) */
+    var resultsContainer = document.querySelector('.search-results__result-list')
+      || document.querySelector('ol.artdeco-list')
+      || document.querySelector('[class*="search-results"] ol')
+      || document.querySelector('[class*="search-results"] ul');
+    var searchScope = resultsContainer || document;
+    var links = searchScope.querySelectorAll('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
     for (var j = 0; j < links.length; j++) {
       var href = normalizeUrl(links[j].href || '');
       if (!href || urls.has(href)) continue;
@@ -591,10 +630,10 @@
     try {
       var cacheSizeBefore = Object.keys(apiEnrichCache).length;
       await sleep(sd(500,8000));
-      var olMap = await fetchOpenLinkMap(cacheSizeBefore);
+      var olMap = await fetchOpenLinkMap(cacheSizeBefore, result.length);
       var enrichSize = Object.keys(apiEnrichCache).length;
       if (enrichSize > 0) {
-        var matched = 0; var companyFills = 0; var titleFills = 0;
+        var matched = 0; var companyFills = 0; var titleFills = 0; var nameFallbacks = 0;
         for (var oi = 0; oi < result.length; oi++) {
           var mid = result[oi].membershipId;
           if (mid && apiEnrichCache.hasOwnProperty(mid)) {
@@ -612,16 +651,45 @@
               titleFills++;
             }
             matched++;
-          } else if (mid && olMap.hasOwnProperty(mid)) {
-            /* Fallback to old openLink-only cache */
-            result[oi].openProfile = olMap[mid] ? 'Yes' : 'No';
-            result[oi].premium = 'Unknown';
-            matched++;
           } else {
-            result[oi].premium = 'Unknown';
+            /* Fallback: match by name+company against unmatched API entries */
+            var nameMatch = null;
+            var profileName = (result[oi].name || '').trim().toLowerCase();
+            if (profileName) {
+              for (var nk in apiEnrichCache) {
+                var candidate = apiEnrichCache[nk];
+                var apiName = (candidate.fullName || '').trim().toLowerCase();
+                if (apiName && apiName === profileName) {
+                  /* Verify company matches too if both have one */
+                  var profileCo = (result[oi].company || '').trim().toLowerCase();
+                  var apiCo = (candidate.company || '').trim().toLowerCase();
+                  if (!profileCo || !apiCo || profileCo.indexOf(apiCo) !== -1 || apiCo.indexOf(profileCo) !== -1) {
+                    nameMatch = candidate;
+                    break;
+                  }
+                }
+              }
+            }
+            if (nameMatch) {
+              result[oi].openProfile = nameMatch.openLink ? 'Yes' : 'No';
+              result[oi].premium = nameMatch.premium ? 'Yes' : 'No';
+              result[oi].idUnverified = '?';
+              if ((!result[oi].company || result[oi].company.length < 2) && nameMatch.company) {
+                result[oi].company = nameMatch.company;
+                companyFills++;
+              }
+              if ((!result[oi].jobTitle || result[oi].jobTitle.length < 2) && nameMatch.title) {
+                result[oi].jobTitle = nameMatch.title;
+                titleFills++;
+              }
+              matched++;
+              nameFallbacks++;
+            } else {
+              result[oi].premium = 'Unknown';
+            }
           }
         }
-        console.log('[Ortus] Enrichment applied: ' + matched + '/' + result.length + ' matched, ' + companyFills + ' company fills, ' + titleFills + ' title fills (cache: ' + enrichSize + ')');
+        console.log('[Ortus] Enrichment applied: ' + matched + '/' + result.length + ' matched (' + nameFallbacks + ' by name), ' + companyFills + ' company fills, ' + titleFills + ' title fills (cache: ' + enrichSize + ')');
       } else {
         console.log('[Ortus] Enrichment: empty cache, no API data applied');
         for (var ui = 0; ui < result.length; ui++) result[ui].premium = 'Unknown';

@@ -693,10 +693,126 @@ function notifyError(msg){
 }
 
 /* ─── SHEET API ─── */
+var SHEET_HEADERS=['Record ID','First Name','Last Name','Domain','Priority (Company)','Priority (Role)','Priority','Lead Status','Company Name','Job Title','Linkedin Bio','First Phone','First Phone Value','Phone Number','Whatsapp Link','Mobile Phone Number','Email','Email Verification','LinkedIn Membership ID','Location','Notes','Secondary Email','Hubspot URL','Ortus Members','Current Tag','Open Profile','Premium','Linkedin First Connection','Client Lead Status','Apollo Contact ID','ID Check'];
+
+function profileToRow(p){
+  return['',p.firstName||'',p.lastName||'','','','','','',p.company||'',p.jobTitle||'',p.publicUrl||p.profileUrl||'','','','','','',p.linkedinEmail||'','',(p.membershipId||'').toString(),p.location||'','','','','','',p.openProfile||'No',p.premium||'Unknown','','','',p.idUnverified||''];
+}
+
 async function sendSheet(profiles,pg,sheetUrl,sheetName){
+  /* Try direct Google Sheets API first */
+  try{
+    var result=await sendSheetDirect(profiles,sheetUrl,sheetName);
+    if(result)return result;
+  }catch(e){addLog('warn','Direct sheet write failed: '+e.message+', falling back to Apps Script');}
+  /* Fallback to Apps Script */
   var payload={action:'writeProfiles',sheetUrl:sheetUrl,tabName:sheetName,profiles:profiles,pageNumber:pg};
-  try{var r=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});return await r.json();}
+  try{
+    var r=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+    var result=await r.json();
+    /* After Apps Script writes, patch ID Check column for flagged profiles */
+    try{await patchIdCheckColumn(profiles,sheetUrl,sheetName||'Sales Nav Scrape');}catch(e2){addLog('warn','ID Check patch failed: '+e2.message);}
+    return result;
+  }
   catch(e){addLog('error','Sheet err: '+e.message);return null;}
+}
+
+async function sendSheetDirect(profiles,sheetUrl,sheetName){
+  var sheetId=extractSheetId(sheetUrl);
+  if(!sheetId)return null;
+  var token=await getGoogleToken();
+  if(!token)return null;
+  var tabName=sheetName||'Sales Nav Scrape';
+
+  /* Check if sheet/tab exists and has headers */
+  var metaUrl='https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'?fields=sheets.properties.title';
+  var metaResp=await fetch(metaUrl,{headers:{'Authorization':'Bearer '+token}});
+  if(metaResp.status===401){
+    await new Promise(function(resolve){chrome.identity.removeCachedAuthToken({token:token},resolve);});
+    token=await getGoogleToken();
+    metaResp=await fetch(metaUrl,{headers:{'Authorization':'Bearer '+token}});
+  }
+  if(!metaResp.ok)throw new Error('Sheets meta '+metaResp.status);
+  var meta=await metaResp.json();
+  var tabExists=false;
+  for(var i=0;i<(meta.sheets||[]).length;i++){
+    if(meta.sheets[i].properties&&meta.sheets[i].properties.title===tabName)tabExists=true;
+  }
+
+  /* Create tab if needed */
+  if(!tabExists){
+    var addResp=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+':batchUpdate',{
+      method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({requests:[{addSheet:{properties:{title:tabName}}}]})
+    });
+    if(!addResp.ok)throw new Error('Add tab '+addResp.status);
+    addLog('info','Created tab: '+tabName);
+  }
+
+  /* Check if headers exist (read row 1) */
+  var headerRange=encodeURIComponent("'"+tabName+"'!A1:AE1");
+  var hResp=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+headerRange,{
+    headers:{'Authorization':'Bearer '+token}
+  });
+  var hData=await hResp.json();
+  var needHeaders=!hData.values||!hData.values[0]||hData.values[0].length<5;
+
+  var rows=profiles.map(profileToRow);
+  if(needHeaders)rows.unshift(SHEET_HEADERS);
+
+  /* Append rows */
+  var appendRange=encodeURIComponent("'"+tabName+"'!A1");
+  var appendUrl='https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+appendRange+':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
+  var appendResp=await fetch(appendUrl,{
+    method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({majorDimension:'ROWS',values:rows})
+  });
+  if(!appendResp.ok){
+    var errText=await appendResp.text();
+    throw new Error('Append '+appendResp.status+': '+errText.substring(0,200));
+  }
+  addLog('info','Direct sheet write: '+profiles.length+' profiles to '+tabName);
+  return{success:true,count:profiles.length};
+}
+
+async function patchIdCheckColumn(profiles,sheetUrl,tabName){
+  var sheetId=extractSheetId(sheetUrl);
+  if(!sheetId)return;
+  var token=await getGoogleToken();
+  if(!token){addLog('warn','No token for ID Check patch');return;}
+  /* Find how many rows are in the sheet to know where the just-written profiles start */
+  var countRange=encodeURIComponent("'"+tabName+"'!A:A");
+  var resp=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+countRange,{
+    headers:{'Authorization':'Bearer '+token}
+  });
+  if(!resp.ok)throw new Error('Read col A: '+resp.status);
+  var data=await resp.json();
+  var totalRows=(data.values||[]).length;
+  var startRow=totalRows-profiles.length+1;
+  /* Write OK or ? for each profile */
+  var values=profiles.map(function(p){return[p.idUnverified==='?'?'?':'OK'];});
+  var aeRange=encodeURIComponent("'"+tabName+"'!AE"+startRow+":AE"+totalRows);
+  var writeUrl='https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+aeRange+'?valueInputOption=USER_ENTERED';
+  var writeResp=await fetch(writeUrl,{
+    method:'PUT',
+    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({range:"'"+tabName+"'!AE"+startRow+":AE"+totalRows,majorDimension:'ROWS',values:values})
+  });
+  if(writeResp.status===401){
+    await new Promise(function(resolve){chrome.identity.removeCachedAuthToken({token:token},resolve);});
+    token=await getGoogleToken();
+    writeResp=await fetch(writeUrl,{
+      method:'PUT',
+      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({range:"'"+tabName+"'!AE"+startRow+":AE"+totalRows,majorDimension:'ROWS',values:values})
+    });
+  }
+  if(!writeResp.ok){
+    var errText=await writeResp.text();
+    throw new Error('AE write '+writeResp.status+': '+errText.substring(0,200));
+  }
+  var flagCount=values.filter(function(v){return v[0]==='?';}).length;
+  addLog('info','ID Check column: '+profiles.length+' rows written ('+flagCount+' flagged with ?) in '+tabName);
 }
 
 async function writeBackLink(srcUrl,srcTab,row,col,value){
@@ -792,8 +908,8 @@ function waitNav(tid,to){
 
 function toCSV(ps){
   if(!ps.length)return '';
-  var h=['Record ID','First Name','Last Name','Domain','Priority (Company)','Priority (Role)','Priority','Lead Status','Company Name','Job Title','Linkedin Bio','First Phone','First Phone Value','Phone Number','Whatsapp Link','Mobile Phone Number','Email','Email Verification','LinkedIn Membership ID','Location','Notes','Secondary Email','Hubspot URL','Ortus Members','Current Tag','Open Profile','Premium','Linkedin First Connection','Client Lead Status','Apollo Contact ID'];
-  var rows=ps.map(function(p){return['',p.firstName||'',p.lastName||'','','','','','',p.company||'',p.jobTitle||'',p.publicUrl||p.profileUrl||'','','','','','',p.linkedinEmail||'','',(p.membershipId||'').toString(),p.location||'','','','','','',p.openProfile||'No',p.premium||'Unknown','','',''].map(function(v){return '"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');});
+  var h=['Record ID','First Name','Last Name','Domain','Priority (Company)','Priority (Role)','Priority','Lead Status','Company Name','Job Title','Linkedin Bio','First Phone','First Phone Value','Phone Number','Whatsapp Link','Mobile Phone Number','Email','Email Verification','LinkedIn Membership ID','Location','Notes','Secondary Email','Hubspot URL','Ortus Members','Current Tag','Open Profile','Premium','Linkedin First Connection','Client Lead Status','Apollo Contact ID','ID Check'];
+  var rows=ps.map(function(p){return['',p.firstName||'',p.lastName||'','','','','','',p.company||'',p.jobTitle||'',p.publicUrl||p.profileUrl||'','','','','','',p.linkedinEmail||'','',(p.membershipId||'').toString(),p.location||'','','','','','',p.openProfile||'No',p.premium||'Unknown','','','',p.idUnverified||''].map(function(v){return '"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');});
   return[h.join(',')].concat(rows).join('\n');
 }
 
