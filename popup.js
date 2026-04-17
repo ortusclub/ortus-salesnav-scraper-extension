@@ -497,13 +497,27 @@ function renderJobs(elId,jobs,activeIdx,isPaused){
       if(isPaused&&i===activeIdx){sc='partial';st='Paused';}
       else{sc='running';st='Running';}
     }
-    else if(j.status==='Incomplete')sc='error';
-    else if(j.status&&(j.status.indexOf('Error')===0||j.status==='Stopped'))sc='error';
+    else if(j.status&&(j.status.indexOf('Error')===0||j.status==='Stopped'||j.status==='Incomplete'))sc='error';
     var nm=j.tabName||('Job '+(i+1));
     var shortSrc=(j.salesNavUrl||'').length>42?(j.salesNavUrl||'').substring(0,39)+'...':j.salesNavUrl||'';
-    li.innerHTML='<div class="job-num">'+(i+1)+'</div><div class="job-info"><div class="job-name">'+esc(nm)+'</div><div class="job-dest">'+esc(shortSrc)+'</div></div><div class="job-status '+sc+'">'+esc(st)+'</div>';
+    var canRetry=sc==='error'||sc==='partial';
+    var retryHtml=canRetry?'<button class="job-retry" data-idx="'+i+'" title="Retry this scrape">\u21bb</button>':'';
+    li.innerHTML='<div class="job-num">'+(i+1)+'</div><div class="job-info"><div class="job-name">'+esc(nm)+'</div><div class="job-dest">'+esc(shortSrc)+'</div></div><div class="job-status '+sc+'">'+esc(st)+'</div>'+retryHtml;
     ul.appendChild(li);
   }
+  ul.onclick=function(e){
+    var t=e.target;if(!t||!t.classList||!t.classList.contains('job-retry'))return;
+    var idx=parseInt(t.getAttribute('data-idx'),10);
+    if(!isNaN(idx))retryJob(idx,t);
+  };
+}
+async function retryJob(idx,btn){
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  var r=await sendBG('retryJob',{index:idx});
+  if(r&&!r.ok){alert(r.error||'Could not retry');if(btn){btn.disabled=false;btn.textContent='\u21bb';}return;}
+  var st=await sendBG('getState');
+  if(st&&st.isRunning&&st.mode==='batch'){showView('batch-running');startBatchPoll();updateBatchView(st);}
+  else{updateBatchView(st);}
 }
 
 function hideAll(){['single-wrong','single-ready','single-progress','single-done','single-interrupted','batch-setup','batch-tab-select','batch-config','batch-ready','batch-running','batch-done','batch-interrupted'].forEach(function(id){var el=document.getElementById('view-'+id);if(el)el.classList.add('hidden');});}

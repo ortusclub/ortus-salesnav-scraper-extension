@@ -16,10 +16,16 @@ chrome.storage.local.get(['ortus_slow_mode','ortus_corner_window','ortus_hide_wi
   }
 });
 async function createScrapeWindow(url){
+  /* Chrome requires window bounds to be ≥50% on-screen — use a safe top-right offset */
   var opts=CORNER_WINDOW
-    ?{url:url,focused:false,width:CORNER_WIDTH,height:CORNER_HEIGHT,left:9999,top:0}/* Chrome clamps left→top-right corner */
+    ?{url:url,focused:false,width:CORNER_WIDTH,height:CORNER_HEIGHT,left:800,top:30}
     :{url:url,focused:false,width:1280,height:900};
-  return await chrome.windows.create(opts);
+  try{return await chrome.windows.create(opts);}
+  catch(e){
+    addLog('warn','createScrapeWindow bounds rejected ('+e.message+'), retrying without position');
+    delete opts.left;delete opts.top;
+    return await chrome.windows.create(opts);
+  }
 }
 async function applyCornerState(){
   if(!state.tabId)return{ok:false,error:'No active tab'};
@@ -27,10 +33,16 @@ async function applyCornerState(){
     chrome.tabs.get(state.tabId,function(t){
       if(chrome.runtime.lastError||!t){addLog('warn','applyCornerState: no live tab ('+(chrome.runtime.lastError?chrome.runtime.lastError.message:'null')+')');res({ok:false});return;}
       var upd=CORNER_WINDOW
-        ?{state:'normal',width:CORNER_WIDTH,height:CORNER_HEIGHT,left:9999,top:0,focused:false}
+        ?{state:'normal',width:CORNER_WIDTH,height:CORNER_HEIGHT,left:800,top:30,focused:false}
         :{state:'normal',width:1280,height:900,focused:false};
       chrome.windows.update(t.windowId,upd,function(w){
-        if(chrome.runtime.lastError){addLog('error','Window update err: '+chrome.runtime.lastError.message);res({ok:false});return;}
+        if(chrome.runtime.lastError){addLog('warn','Corner update rejected ('+chrome.runtime.lastError.message+'), retrying without position');
+          var fb=CORNER_WINDOW?{state:'normal',width:CORNER_WIDTH,height:CORNER_HEIGHT,focused:false}:{state:'normal',width:1280,height:900,focused:false};
+          chrome.windows.update(t.windowId,fb,function(){
+            if(chrome.runtime.lastError){addLog('error','Window update failed: '+chrome.runtime.lastError.message);res({ok:false});return;}
+            addLog('info','Window '+t.windowId+' resized (fallback position)');res({ok:true});
+          });return;
+        }
         addLog('info','Window '+t.windowId+' → '+(CORNER_WINDOW?'corner':'normal'));
         res({ok:true});
       });
@@ -65,7 +77,7 @@ chrome.storage.session.get('ortus_logs',function(d){
 });
 
 var state = {
-  mode: null, isRunning: false, isPaused: false,
+  mode: null, isRunning: false, isPaused: false, recoverRequested: false, retryQueue: [],
   tabId: null, currentPage: 0, totalPages: 0, totalResults: 0,
   profilesScraped: 0, allProfiles: [], errors: [],
   startTime: null, endTime: null, sheetUrl: '', sheetName: '',
@@ -83,6 +95,24 @@ async function recoverBatch(){
   addLog('info','Recover requested by user at job '+(state.currentJobIndex+1)+' page '+state.currentPage);
   state.recoverRequested=true;state.isPaused=false;bc();
   if(state.tabId){try{await chrome.tabs.remove(state.tabId);addLog('info','Recover: tab closed to unblock');}catch(e){addLog('warn','Recover: tab close err: '+e.message);}}
+  return{ok:true};
+}
+async function retryJobAction(idx){
+  if(typeof idx!=='number'||idx<0||!state.jobs||idx>=state.jobs.length)return{ok:false,error:'Invalid job index'};
+  var job=state.jobs[idx];
+  if(!job)return{ok:false,error:'No job at index'};
+  job.status='Pending';job.profilesScraped=0;
+  if(!state.retryQueue)state.retryQueue=[];
+  if(state.retryQueue.indexOf(idx)===-1)state.retryQueue.push(idx);
+  addLog('info','Retry queued for job '+(idx+1)+(state.isRunning?' (will run after current)':' (starting now)'));
+  bc();
+  if(!state.isRunning){
+    state.mode='batch';state.isRunning=true;
+    state.startTime=state.startTime||Date.now();state.endTime=null;
+    state.currentJobIndex=-1;
+    chrome.action.setBadgeBackgroundColor({color:'#1a73e8'});
+    startSaveTimer();nextJob();
+  }
   return{ok:true};
 }
 
@@ -106,6 +136,7 @@ chrome.runtime.onMessage.addListener(function(msg,sender,sendResponse){
     case 'pauseBatch':state.isPaused=true;bc();sendResponse({ok:true});break;
     case 'resumeBatch':state.isPaused=false;bc();sendResponse({ok:true});break;
     case 'recoverBatch':recoverBatch().then(sendResponse);return true;
+    case 'retryJob':retryJobAction(msg.index).then(sendResponse);return true;
     /* Persistence / resume */
     case 'checkSavedState':checkSavedState().then(sendResponse);return true;
     case 'clearSavedState':clearSavedState().then(sendResponse);return true;
@@ -130,7 +161,7 @@ function pubState(){
 }
 
 function resetState(){
-  state={mode:null,isRunning:false,isPaused:false,recoverRequested:false,tabId:null,currentPage:0,totalPages:0,totalResults:0,
+  state={mode:null,isRunning:false,isPaused:false,recoverRequested:false,retryQueue:[],tabId:null,currentPage:0,totalPages:0,totalResults:0,
     profilesScraped:0,allProfiles:[],errors:[],startTime:null,endTime:null,sheetUrl:'',sheetName:'',
     jobs:[],currentJobIndex:-1,salesNavUrl:'',srcSheetUrl:'',srcTabName:'',outputColIdx:-1};
   chrome.action.setBadgeText({text:''});
@@ -348,16 +379,28 @@ async function nextJob(){
     }
   }
   if(!state.isRunning)return;
-  state.currentJobIndex++;
-  while(state.currentJobIndex<state.jobs.length){
-    var s=state.jobs[state.currentJobIndex].status;
-    if(!s||s==='Pending')break;
+  /* Priority 1: retry queue (user-requested re-runs of failed/partial jobs) */
+  if(state.retryQueue&&state.retryQueue.length>0){
+    state.currentJobIndex=state.retryQueue.shift();
+    addLog('info','Running retry for job '+(state.currentJobIndex+1));
+  }else{
     state.currentJobIndex++;
+    while(state.currentJobIndex<state.jobs.length){
+      var s=state.jobs[state.currentJobIndex].status;
+      if(!s||s==='Pending')break;
+      state.currentJobIndex++;
+    }
   }
   if(state.currentJobIndex>=state.jobs.length){
-    state.isRunning=false;state.endTime=Date.now();stopSaveTimer();clearSavedState();
-    chrome.action.setBadgeBackgroundColor({color:'#1e8e3e'});chrome.action.setBadgeText({text:'\u2713'});
-    setTimeout(function(){chrome.action.setBadgeText({text:''});},30000);bc();return;
+    /* Final safety: flush any remaining retries before declaring done */
+    if(state.retryQueue&&state.retryQueue.length>0){
+      state.currentJobIndex=state.retryQueue.shift();
+      addLog('info','Running final retry for job '+(state.currentJobIndex+1));
+    }else{
+      state.isRunning=false;state.endTime=Date.now();stopSaveTimer();clearSavedState();
+      chrome.action.setBadgeBackgroundColor({color:'#1e8e3e'});chrome.action.setBadgeText({text:'\u2713'});
+      setTimeout(function(){chrome.action.setBadgeText({text:''});},30000);bc();return;
+    }
   }
   var job=state.jobs[state.currentJobIndex];var jn=state.currentJobIndex+1;var tot=state.jobs.length;
   chrome.action.setBadgeText({text:jn+'/'+tot});bc();
@@ -749,7 +792,7 @@ async function nextJob(){
 }
 
 function stopBatch(){
-  state.isRunning=false;state.isPaused=false;state.recoverRequested=false;state.endTime=Date.now();stopSaveTimer();clearSavedState();
+  state.isRunning=false;state.isPaused=false;state.recoverRequested=false;state.retryQueue=[];state.endTime=Date.now();stopSaveTimer();clearSavedState();
   if(state.currentJobIndex>=0&&state.currentJobIndex<state.jobs.length){
     state.jobs[state.currentJobIndex].status='Stopped';
   }
