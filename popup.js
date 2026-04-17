@@ -30,6 +30,17 @@ document.addEventListener('DOMContentLoaded',function(){
     chrome.runtime.sendMessage({action:'setSlowMode',slow:slowToggle.checked});
   });
 
+  /* Corner window toggle */
+  var cornerToggle=$('toggle-corner-window');
+  chrome.storage.local.get(['ortus_corner_window','ortus_hide_window'],function(d){
+    var v=(d&&typeof d.ortus_corner_window!=='undefined')?d.ortus_corner_window:(d&&d.ortus_hide_window);
+    cornerToggle.checked=!!v;
+  });
+  cornerToggle.addEventListener('change',function(){
+    chrome.storage.local.set({ortus_corner_window:cornerToggle.checked});
+    chrome.runtime.sendMessage({action:'setCornerWindow',corner:cornerToggle.checked});
+  });
+
   /* Batch wizard */
   $('btn-connect-sheet').addEventListener('click',connectSheet);
   $('btn-tab-back').addEventListener('click',function(){showView('batch-setup');saveWizard();});
@@ -42,6 +53,8 @@ document.addEventListener('DOMContentLoaded',function(){
   $('btn-ready-back').addEventListener('click',function(){showView('batch-config');saveWizard();});
   $('btn-start-batch').addEventListener('click',startBatch);
   $('btn-stop-batch').addEventListener('click',stopBatch);
+  $('btn-pause-batch').addEventListener('click',togglePauseBatch);
+  $('btn-recover-batch').addEventListener('click',recoverBatch);
   $('btn-batch-again').addEventListener('click',batchAgain);
   $('btn-resume-batch').addEventListener('click',resumeBatch);
   $('btn-discard-batch').addEventListener('click',discardBatch);
@@ -250,7 +263,7 @@ async function scrapeAgain(){await sendBG('clearSavedState');await sendBG('reset
 async function initBatch(){
   hideAll();
   var st=await sendBG('getState');
-  if(st&&st.isRunning&&st.mode==='batch'){showView('batch-running');renderJobs('batch-job-list',st.jobs,st.currentJobIndex);startBatchPoll();return;}
+  if(st&&st.isRunning&&st.mode==='batch'){showView('batch-running');renderJobs('batch-job-list',st.jobs,st.currentJobIndex,st.isPaused);startBatchPoll();return;}
   if(st&&st.endTime&&st.mode==='batch'&&st.jobs&&st.jobs.length>0){showBatchDone(st);return;}
   var saved=await sendBG('checkSavedState');
   if(saved&&saved.hasInterrupted&&saved.mode==='batch'){showBatchInterrupted(saved);return;}
@@ -435,18 +448,21 @@ function updateBatchView(st){
   if(!st)return;
   if(!st.isRunning&&st.endTime&&st.mode==='batch'){clearInterval(progressInterval);showBatchDone(st);return;}
   if(st.isRunning&&st.mode==='batch'){
-    $('batch-status').textContent='Job '+(st.currentJobIndex+1)+' of '+st.jobs.length;
+    $('batch-status').textContent=st.isPaused?'Paused — job '+(st.currentJobIndex+1)+' of '+st.jobs.length:'Job '+(st.currentJobIndex+1)+' of '+st.jobs.length;
+    var pb=$('btn-pause-batch');if(pb)pb.textContent=st.isPaused?'Resume':'Pause';
     var s=st.profilesScraped||0,t=st.totalResults||0,cap=Math.min(t,2500),pct=cap>0?Math.min(100,Math.round(s/cap*100)):0;
     var e;e=$('bp-bar');if(e)e.style.width=pct+'%';
     e=$('bp-lbl');if(e)e.textContent='Page '+(st.currentPage||1);
     e=$('bp-pct');if(e)e.textContent=pct+'%';
     e=$('bp-n');if(e)e.textContent=s+' profiles';
     e=$('bp-t');if(e)e.textContent=t>0?(t>2500?'of 2,500 ('+t.toLocaleString()+' match, LinkedIn limit)':'of '+t.toLocaleString()+' total'):'';
-    renderJobs('batch-job-list',st.jobs,st.currentJobIndex);
+    renderJobs('batch-job-list',st.jobs,st.currentJobIndex,st.isPaused);
   }
 }
 
 async function stopBatch(){clearInterval(progressInterval);await sendBG('stopBatch');var st=await sendBG('getState');showBatchDone(st);}
+async function togglePauseBatch(){var st=await sendBG('getState');await sendBG(st&&st.isPaused?'resumeBatch':'pauseBatch');var st2=await sendBG('getState');updateBatchView(st2);}
+async function recoverBatch(){var b=$('btn-recover-batch');if(b){b.disabled=true;b.textContent='Recovering...';}var r=await sendBG('recoverBatch');if(b){setTimeout(function(){b.disabled=false;b.textContent='Recover';},3000);}if(r&&!r.ok)alert(r.error||'Could not recover');}
 
 function showBatchDone(st){
   showView('batch-done');clearWizard();
@@ -470,14 +486,18 @@ async function discardBatch(){clearWizard();await sendBG('clearSavedState');awai
 async function batchAgain(){clearWizard();await sendBG('clearSavedState');await sendBG('resetState');initBatch();}
 
 /* ─── SHARED UI ─── */
-function renderJobs(elId,jobs,activeIdx){
+function renderJobs(elId,jobs,activeIdx,isPaused){
   var ul=$(elId);ul.innerHTML='';
   for(var i=0;i<jobs.length;i++){
     var j=jobs[i],li=document.createElement('li');li.className='job-item';
     var sc='pending',st=j.status||'Pending';
     if(j.status&&j.status.indexOf('Done')===0)sc='done';
     else if(j.status&&j.status.indexOf('Partial')===0)sc='partial';
-    else if(j.status==='Running'||i===activeIdx){sc='running';st='Running';}
+    else if(j.status==='Running'||i===activeIdx){
+      if(isPaused&&i===activeIdx){sc='partial';st='Paused';}
+      else{sc='running';st='Running';}
+    }
+    else if(j.status==='Incomplete')sc='error';
     else if(j.status&&(j.status.indexOf('Error')===0||j.status==='Stopped'))sc='error';
     var nm=j.tabName||('Job '+(i+1));
     var shortSrc=(j.salesNavUrl||'').length>42?(j.salesNavUrl||'').substring(0,39)+'...':j.salesNavUrl||'';

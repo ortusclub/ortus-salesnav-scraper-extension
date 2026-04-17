@@ -4,8 +4,39 @@ var DELAY_MAX_FAST = 4000;
 var DELAY_MIN_SLOW = 6000;
 var DELAY_MAX_SLOW = 10000;
 var SLOW_MODE = false; /* Toggled from popup for older machines */
-/* Load slow mode setting on startup */
-chrome.storage.local.get('ortus_slow_mode',function(d){ if(d) SLOW_MODE=!!d.ortus_slow_mode; });
+var CORNER_WINDOW = false; /* Shrink scraping window to small corner */
+var CORNER_WIDTH = 500, CORNER_HEIGHT = 800;
+/* Load settings on startup */
+chrome.storage.local.get(['ortus_slow_mode','ortus_corner_window','ortus_hide_window'],function(d){
+  if(d){
+    SLOW_MODE=!!d.ortus_slow_mode;
+    /* Migrate old ortus_hide_window → ortus_corner_window */
+    if(typeof d.ortus_corner_window!=='undefined')CORNER_WINDOW=!!d.ortus_corner_window;
+    else if(typeof d.ortus_hide_window!=='undefined')CORNER_WINDOW=!!d.ortus_hide_window;
+  }
+});
+async function createScrapeWindow(url){
+  var opts=CORNER_WINDOW
+    ?{url:url,focused:false,width:CORNER_WIDTH,height:CORNER_HEIGHT,left:9999,top:0}/* Chrome clamps left→top-right corner */
+    :{url:url,focused:false,width:1280,height:900};
+  return await chrome.windows.create(opts);
+}
+async function applyCornerState(){
+  if(!state.tabId)return{ok:false,error:'No active tab'};
+  return new Promise(function(res){
+    chrome.tabs.get(state.tabId,function(t){
+      if(chrome.runtime.lastError||!t){addLog('warn','applyCornerState: no live tab ('+(chrome.runtime.lastError?chrome.runtime.lastError.message:'null')+')');res({ok:false});return;}
+      var upd=CORNER_WINDOW
+        ?{state:'normal',width:CORNER_WIDTH,height:CORNER_HEIGHT,left:9999,top:0,focused:false}
+        :{state:'normal',width:1280,height:900,focused:false};
+      chrome.windows.update(t.windowId,upd,function(w){
+        if(chrome.runtime.lastError){addLog('error','Window update err: '+chrome.runtime.lastError.message);res({ok:false});return;}
+        addLog('info','Window '+t.windowId+' → '+(CORNER_WINDOW?'corner':'normal'));
+        res({ok:true});
+      });
+    });
+  });
+}
 
 function getDelay(fast,slow){ return SLOW_MODE ? slow : fast; }
 function pageDelay(){ return rDelay(SLOW_MODE?DELAY_MIN_SLOW:DELAY_MIN_FAST, SLOW_MODE?DELAY_MAX_SLOW:DELAY_MAX_FAST); }
@@ -46,6 +77,14 @@ var state = {
 var saveTimer = null;
 
 function rDelay(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+async function waitWhilePaused(){while(state.isPaused&&state.isRunning){await new Promise(function(r){setTimeout(r,500);});}}
+async function recoverBatch(){
+  if(!state.isRunning)return{ok:false,error:'Batch not running'};
+  addLog('info','Recover requested by user at job '+(state.currentJobIndex+1)+' page '+state.currentPage);
+  state.recoverRequested=true;state.isPaused=false;bc();
+  if(state.tabId){try{await chrome.tabs.remove(state.tabId);addLog('info','Recover: tab closed to unblock');}catch(e){addLog('warn','Recover: tab close err: '+e.message);}}
+  return{ok:true};
+}
 
 chrome.runtime.onMessage.addListener(function(msg,sender,sendResponse){
   switch(msg.action){
@@ -64,6 +103,9 @@ chrome.runtime.onMessage.addListener(function(msg,sender,sendResponse){
     case 'setJobs':setJobs(msg);sendResponse({ok:true});break;
     case 'startBatch':startBatch().then(sendResponse);return true;
     case 'stopBatch':stopBatch();sendResponse({ok:true});break;
+    case 'pauseBatch':state.isPaused=true;bc();sendResponse({ok:true});break;
+    case 'resumeBatch':state.isPaused=false;bc();sendResponse({ok:true});break;
+    case 'recoverBatch':recoverBatch().then(sendResponse);return true;
     /* Persistence / resume */
     case 'checkSavedState':checkSavedState().then(sendResponse);return true;
     case 'clearSavedState':clearSavedState().then(sendResponse);return true;
@@ -71,6 +113,10 @@ chrome.runtime.onMessage.addListener(function(msg,sender,sendResponse){
     case 'getLogs':sendResponse({logs:logBuffer});break;
     case 'clearLogs':logBuffer=[];chrome.storage.session.remove('ortus_logs');sendResponse({ok:true});break;
     case 'setSlowMode':SLOW_MODE=!!msg.slow;addLog('info','Slow mode: '+(SLOW_MODE?'ON':'OFF'));sendResponse({ok:true});break;
+    case 'setCornerWindow':
+      CORNER_WINDOW=!!msg.corner;addLog('info','Corner window: '+(CORNER_WINDOW?'ON':'OFF'));
+      applyCornerState().then(function(r){sendResponse({ok:true,applied:r&&r.ok});});
+      return true;
     default:sendResponse({error:'Unknown: '+msg.action});
   }
 });
@@ -84,7 +130,7 @@ function pubState(){
 }
 
 function resetState(){
-  state={mode:null,isRunning:false,isPaused:false,tabId:null,currentPage:0,totalPages:0,totalResults:0,
+  state={mode:null,isRunning:false,isPaused:false,recoverRequested:false,tabId:null,currentPage:0,totalPages:0,totalResults:0,
     profilesScraped:0,allProfiles:[],errors:[],startTime:null,endTime:null,sheetUrl:'',sheetName:'',
     jobs:[],currentJobIndex:-1,salesNavUrl:'',srcSheetUrl:'',srcTabName:'',outputColIdx:-1};
   chrome.action.setBadgeText({text:''});
@@ -152,7 +198,7 @@ async function resumeInterrupted(){
         var sep=resumeUrl.indexOf('?')!==-1?'&':'?';
         resumeUrl=resumeUrl+sep+'page='+state.currentPage;
       }
-      var win=await chrome.windows.create({url:resumeUrl,focused:false,width:1280,height:900});
+      var win=await createScrapeWindow(resumeUrl);
       state.tabId=win.tabs[0].id;
       await waitTab(state.tabId,20000);
       try{await chrome.tabs.setZoom(state.tabId,0.25);}catch(e){}
@@ -292,6 +338,15 @@ async function startBatch(){
 }
 
 async function nextJob(){
+  /* Safety: never leave a previous job stuck at 'Running' */
+  if(state.currentJobIndex>=0&&state.currentJobIndex<state.jobs.length){
+    var prev=state.jobs[state.currentJobIndex];
+    if(prev&&prev.status==='Running'){
+      var n=prev.profilesScraped||state.profilesScraped||0;
+      prev.status=n>0?'Partial ('+n+', interrupted)':'Error: interrupted';
+      addLog('warn','Safety: job '+(state.currentJobIndex+1)+' still "Running" at nextJob — finalized to "'+prev.status+'"');
+    }
+  }
   if(!state.isRunning)return;
   state.currentJobIndex++;
   while(state.currentJobIndex<state.jobs.length){
@@ -308,7 +363,7 @@ async function nextJob(){
   chrome.action.setBadgeText({text:jn+'/'+tot});bc();
   job.status='Running';
   try{
-    var win=await chrome.windows.create({url:job.salesNavUrl,focused:false,width:1280,height:900});var tab=win.tabs[0];
+    var win=await createScrapeWindow(job.salesNavUrl);var tab=win.tabs[0];
     state.tabId=tab.id;await waitTab(tab.id,20000);
     try{await chrome.tabs.setZoom(tab.id,0.25);}catch(e){addLog('warn','Zoom err: '+e.message);}
     await new Promise(function(r){setTimeout(r,getDelay(3000,8000));});
@@ -350,6 +405,23 @@ async function nextJob(){
     var allP=[];var cp=1;var consecutiveEmpty=0;
     var skippedPages=[];var recentSkips=0;
     while(cp<=maxPage&&state.isRunning){
+      if(state.recoverRequested){
+        state.recoverRequested=false;
+        addLog('info','Recover: reopening tab at page '+cp);
+        try{if(state.tabId){try{await chrome.tabs.remove(state.tabId);}catch(_){}}}catch(_){}
+        try{
+          var recUrl=new URL(job.salesNavUrl);recUrl.searchParams.set('page',cp);
+          var rwin=await createScrapeWindow(recUrl.toString());
+          tab=rwin.tabs[0];state.tabId=tab.id;
+          await waitTab(tab.id,20000);
+          try{await chrome.tabs.setZoom(tab.id,0.25);}catch(_){}
+          await new Promise(function(r){setTimeout(r,5000);});
+          try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(_){}
+          await new Promise(function(r){setTimeout(r,2000);});
+          try{await tabMsg(tab.id,{action:'waitForResults',timeout:20000});}catch(_){}
+          addLog('info','Recover: tab reopened at page '+cp);
+        }catch(er){addLog('error','Recover reopen failed: '+er.message);break;}
+      }
       chrome.action.setBadgeText({text:jn+':p'+cp});bc();
       var pageProfiles=0;
       try{
@@ -544,6 +616,7 @@ async function nextJob(){
         consecutiveEmpty++;
         skippedPages.push(cp);recentSkips++;
         if(e.message&&(e.message.indexOf('Tab closed')!==-1||e.message.indexOf('disconnected')!==-1)){
+          if(state.recoverRequested){addLog('info','Tab closed by recover — continuing to top-of-loop reopen');continue;}
           job.status='Error: Tab closed';
           notifyError('Batch interrupted at job '+(jn)+', page '+cp+'. You can resume from the extension.');
           saveState();stopSaveTimer();state.isRunning=false;bc();return;
@@ -577,6 +650,8 @@ async function nextJob(){
       if(!shouldContinue){addLog('warn','STOPPING: totalR='+totalR+', collected='+allP.length+', skipped='+skippedPages.length+', consecutiveEmpty='+consecutiveEmpty+', cp='+cp+', maxPage='+maxPage);break;}
       await new Promise(function(r){setTimeout(r,pageDelay());});
       if(!state.isRunning)break;
+      await waitWhilePaused();
+      if(!state.isRunning)break;
       cp++;
       /* If previous page was empty, skip click nav — go straight to URL nav */
       var navOk=false;
@@ -600,7 +675,7 @@ async function nextJob(){
             await chrome.tabs.update(tab.id,{url:reloadUrl.toString()});
             await waitTab(tab.id,20000);navOk=true;
             addLog('info','Full reload to page '+cp+' ok');
-          }catch(e2){addLog('error','Full reload failed: '+e2.message);break;}
+          }catch(e2){addLog('error','Full reload failed: '+e2.message);if(state.recoverRequested)continue;break;}
         }
       }
       if(navOk){
@@ -617,6 +692,8 @@ async function nextJob(){
       addLog('info','Retry pass: '+skippedPages.length+' skipped pages ['+skippedPages.join(',')+']');
       var recovered=0;
       for(var si=0;si<skippedPages.length&&state.isRunning;si++){
+        await waitWhilePaused();
+        if(!state.isRunning)break;
         var sp=skippedPages[si];
         addLog('info','Retrying page '+sp+'...');
         try{
@@ -668,11 +745,11 @@ async function nextJob(){
     try{if(state.tabId){try{await chrome.tabs.setZoom(state.tabId,0.75);}catch(e){}await chrome.tabs.remove(state.tabId);}}catch(x){}
   }
   bc();
-  if(state.isRunning){await new Promise(function(r){setTimeout(r,rDelay(5000,10000));});nextJob();}
+  if(state.isRunning){await new Promise(function(r){setTimeout(r,rDelay(5000,10000));});await waitWhilePaused();if(state.isRunning)nextJob();}
 }
 
 function stopBatch(){
-  state.isRunning=false;state.endTime=Date.now();stopSaveTimer();clearSavedState();
+  state.isRunning=false;state.isPaused=false;state.recoverRequested=false;state.endTime=Date.now();stopSaveTimer();clearSavedState();
   if(state.currentJobIndex>=0&&state.currentJobIndex<state.jobs.length){
     state.jobs[state.currentJobIndex].status='Stopped';
   }
