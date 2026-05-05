@@ -8,12 +8,51 @@ function doPost(e) {
       case "readJobs": return handleReadJobs(p);
       case "updateJob": return handleUpdateJob(p);
       case "writeBackLink": return handleWriteBackLink(p);
+      case "checkSharing": return handleCheckSharing(p);
       default: return jr({success:false, error:"Unknown: "+p.action});
     }
   } catch(err) { return jr({success:false, error:err.message}); }
 }
 
-function doGet() { return jr({status:"ok",version:"2.2",actions:["writeProfiles","readTabs","readColumns","readJobs","updateJob","writeBackLink"]}); }
+function doGet() { return jr({status:"ok",version:"2.3",actions:["writeProfiles","readTabs","readColumns","readJobs","updateJob","writeBackLink","checkSharing"]}); }
+
+/* Run this once from the editor (▶ Run) to authorize the DriveApp scope.
+ * Safe to run with no arguments — does nothing destructive, just touches DriveApp
+ * so Apps Script knows it needs the scope and triggers the OAuth consent prompt. */
+function authorizeDriveScope() {
+  DriveApp.getStorageUsed(); /* trivial DriveApp call — forces scope auth */
+  Logger.log("DriveApp scope authorized. You can now Deploy → Manage deployments → New version.");
+}
+
+/* Verify a sheet is shared as "Anyone with the link · Editor" specifically.
+ * Requires DriveApp scope — first call after redeploy may prompt re-authorization. */
+function handleCheckSharing(p) {
+  if (!p.sheetUrl) return jr({success:false, error:"Missing sheetUrl"});
+  try {
+    var m = String(p.sheetUrl).match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    if (!m) return jr({success:false, error:"Not a valid Sheets URL"});
+    var file = DriveApp.getFileById(m[1]);
+    var access = file.getSharingAccess();
+    var permission = file.getSharingPermission();
+    var anyoneLink = (access === DriveApp.Access.ANYONE_WITH_LINK || access === DriveApp.Access.ANYONE);
+    var canEdit = (permission === DriveApp.Permission.EDIT);
+    var ok = anyoneLink && canEdit;
+    return jr({
+      success: true,
+      shared: ok,
+      access: String(access),
+      permission: String(permission),
+      anyoneLink: anyoneLink,
+      canEdit: canEdit,
+      reason: ok ? "OK" : (
+        !anyoneLink ? "Sharing access is not 'Anyone with the link' (got '" + access + "')"
+                    : "Sharing permission is not 'Editor' (got '" + permission + "')"
+      )
+    });
+  } catch (err) {
+    return jr({success:false, error:"checkSharing failed: " + err.message});
+  }
+}
 
 function handleWrite(p) {
   if (!p.sheetUrl) return jr({success:false,error:"Missing sheetUrl"});
@@ -25,7 +64,7 @@ function handleWrite(p) {
     var h=["Record ID","First Name","Last Name","Domain","Priority (Company)","Priority (Role)","Priority","Lead Status","Company Name","Job Title","Linkedin Bio","First Phone","First Phone Value","Phone Number","Whatsapp Link","Mobile Phone Number","Email","Email Verification","LinkedIn Membership ID","Location","Notes","Secondary Email","Hubspot URL","Ortus Members","Current Tag","Open Profile","Premium","Linkedin First Connection","Client Lead Status","Apollo Contact ID","ID Check"];
     sh.appendRow(h);sh.getRange(1,1,1,h.length).setFontWeight("bold");sh.setFrozenRows(1);
   }
-  var rows=p.profiles.map(function(r){return["",r.firstName||"",r.lastName||"","","","","","",r.company||"",r.jobTitle||"",r.publicUrl||r.profileUrl||"","","","","","",r.linkedinEmail||"","",(r.membershipId||"").toString(),r.location||"","","","","","",r.openProfile||"No",r.premium||"Unknown","","","",r.idUnverified||""]});
+  var rows=p.profiles.map(function(r){return["",r.firstName||"",r.lastName||"","","","","","",r.company||"",r.jobTitle||"",r.publicUrl||r.profileUrl||"","","","","","",r.linkedinEmail||"","",(r.membershipId||"").toString(),r.location||"","","","","","",r.openProfile||"No",r.premium||"Unknown","","","",r.idUnverified==="?"?"?":"OK"]});
   var start=sh.getLastRow()+1;
   sh.getRange(start,1,rows.length,rows[0].length).setValues(rows);
   return jr({success:true,rowsWritten:rows.length});

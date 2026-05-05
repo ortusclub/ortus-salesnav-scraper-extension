@@ -1,133 +1,870 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
+<title>Sales Nav Batch Scraper</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-  :root{--bg:#0f1117;--surface:#1a1d27;--surface-2:#232633;--border:#2e3244;--text:#e4e5ea;--text-dim:#8b8fa3;--text-muted:#5e6278;--blue:#4f8ff7;--blue-dim:rgba(79,143,247,0.12);--green:#3dd68c;--green-dim:rgba(61,214,140,0.12);--red:#f75f5f;--red-dim:rgba(247,95,95,0.12);--yellow:#f7c948;--yellow-dim:rgba(247,201,72,0.12);--orange:#f7943e;--orange-dim:rgba(247,148,62,0.12);--radius:10px;--font:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{width:420px;min-height:200px;max-height:600px;overflow-y:auto;font-family:var(--font);font-size:13px;background:var(--bg);color:var(--text);}
-  .header{padding:16px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
-  .header-icon{width:34px;height:34px;background:linear-gradient(135deg,#10b981,#059669);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
-  .header-text h1{font-size:14px;font-weight:700;letter-spacing:-0.2px;}
-  .header-text p{font-size:11px;color:var(--text-dim);margin-top:1px;}
-  .section{padding:16px 20px;}.section+.section{border-top:1px solid var(--border);}
-  .status-banner{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:var(--radius);font-size:12px;font-weight:500;}
-  .status-banner.info{background:var(--blue-dim);color:var(--blue);}
-  .status-banner.success{background:var(--green-dim);color:var(--green);}
-  .status-banner.warning{background:var(--yellow-dim);color:var(--yellow);}
-  .status-banner.error{background:var(--red-dim);color:var(--red);}
-  .status-banner.interrupted{background:var(--orange-dim);color:var(--orange);}
-  .status-banner .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0;}
-  .status-banner.info .dot{animation:pulse 2s ease-in-out infinite;}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-  label{display:block;font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;}
-  input[type="text"],input[type="number"],select{width:100%;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font);outline:none;transition:border-color 0.15s;}
-  input::placeholder{color:var(--text-muted);}input:focus,select:focus{border-color:var(--blue);}
-  input[type="number"]{-moz-appearance:textfield;}input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
-  select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b8fa3' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;cursor:pointer;}
-  select option{background:var(--surface);color:var(--text);}
-  .input-hint{font-size:11px;color:var(--text-muted);margin-top:4px;line-height:1.5;}.field+.field{margin-top:12px;}
-  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font);cursor:pointer;transition:all 0.15s;}
-  .btn-primary{background:var(--blue);color:#fff;}.btn-primary:hover{background:#3d7de0;}.btn-primary:disabled{background:var(--surface-2);color:var(--text-muted);cursor:default;}
-  .btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border);}.btn-secondary:hover{background:var(--surface-2);}
-  .btn-danger{background:var(--red-dim);color:var(--red);}
-  .btn-warning{background:var(--orange-dim);color:var(--orange);border:1px solid rgba(247,148,62,0.25);}.btn-warning:hover{background:rgba(247,148,62,0.2);}
-  .btn-row{display:flex;gap:8px;}.btn-row .btn{flex:1;}
-  .tabs{display:flex;border-bottom:1px solid var(--border);}
-  .tab{flex:1;padding:10px;text-align:center;font-size:12px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s;}
-  .tab.active{color:var(--blue);border-bottom-color:var(--blue);}.tab:hover{color:var(--text);}
-  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
-  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;}
-  .stat-card .value{font-size:20px;font-weight:700;letter-spacing:-0.5px;}
-  .stat-card .label{font-size:10px;color:var(--text-dim);margin-top:2px;}
-  .progress-bar{width:100%;height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden;margin:8px 0;}
-  .progress-fill{height:100%;background:var(--blue);border-radius:3px;transition:width 0.4s ease;}
-  .progress-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);}
-  .complete-card{background:var(--green-dim);border:1px solid rgba(61,214,140,0.2);border-radius:var(--radius);padding:20px;text-align:center;}
-  .complete-card .icon{font-size:30px;margin-bottom:6px;}.complete-card h3{color:var(--green);font-size:15px;}.complete-card p{color:var(--text-dim);font-size:12px;margin-top:4px;}
-  .job-list{list-style:none;}
-  .job-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);font-size:12px;}.job-item:last-child{border-bottom:none;}
-  .job-num{width:22px;height:22px;background:var(--surface-2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0;}
-  .job-info{flex:1;min-width:0;}.job-info .job-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.job-info .job-dest{color:var(--text-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .job-status{font-size:11px;font-weight:600;flex-shrink:0;padding:3px 8px;border-radius:4px;}
-  .job-retry{flex-shrink:0;background:transparent;border:1px solid var(--border);color:var(--text-dim);width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:13px;padding:0;display:flex;align-items:center;justify-content:center;}.job-retry:hover{background:var(--surface-2);color:var(--text);border-color:var(--blue);}.job-retry:disabled{opacity:0.4;cursor:default;}
-  .job-status.pending{color:var(--text-muted);background:var(--surface-2);}.job-status.running{color:var(--blue);background:var(--blue-dim);}.job-status.done{color:var(--green);background:var(--green-dim);}.job-status.partial{color:var(--yellow);background:var(--yellow-dim);}.job-status.error{color:var(--red);background:var(--red-dim);}
-  .hidden{display:none !important;}
-  ::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
-  a{color:var(--blue);text-decoration:none;}a:hover{text-decoration:underline;}
-  .step-indicator{display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:11px;color:var(--text-muted);}
-  .step-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;flex-shrink:0;}
-  .step-dot.active{border-color:var(--blue);color:var(--blue);background:var(--blue-dim);}
-  .step-dot.completed{border-color:var(--green);color:var(--green);background:var(--green-dim);}
-  .step-line{flex:1;height:1px;background:var(--border);}
-  .col-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;color:var(--text-dim);max-height:80px;overflow-y:auto;line-height:1.8;}
-  .col-preview span{background:var(--surface-2);padding:2px 8px;border-radius:4px;margin:2px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .row-range{display:flex;align-items:center;gap:8px;}
-  .row-range input{width:80px;text-align:center;}
-  .row-range .range-sep{color:var(--text-muted);font-size:12px;font-weight:600;}
-  .section-title{font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
-  .mode-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--surface);}
-  .mode-bar label{margin:0;font-size:11px;color:var(--text-dim);text-transform:none;letter-spacing:0;}
-  .mode-bar .mode-hint{font-size:10px;color:var(--text-muted);}
-  .toggle{position:relative;width:36px;height:20px;flex-shrink:0;}
-  .toggle input{opacity:0;width:0;height:0;}
-  .toggle .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:var(--border);border-radius:20px;transition:0.2s;}
-  .toggle .slider:before{content:"";position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:var(--text-dim);border-radius:50%;transition:0.2s;}
-  .toggle input:checked+.slider{background:var(--yellow);}
-  .toggle input:checked+.slider:before{transform:translateX(16px);background:var(--bg);}
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+:root{
+  color-scheme:light;
+  --ink:#16140F; --ink-2:#2C2A24; --ink-soft:#6B6557; --ink-faint:#A39B89;
+  --paper:#FDFBF7; --paper-2:#F6F2E9; --paper-warm:#F1ECDF;
+  --rule:#E5DFD0; --rule-2:#C9C0AC;
+  --gold:#C99046; --gold-deep:#9B6A26; --gold-warm:#F0CE89; --gold-tint:#F6E8C8;
+  --ok:#4F7A4D; --err:#8B3A2E;
+  --serif:"Newsreader","Charter","Iowan Old Style",Georgia,serif;
+  --sans:"Geist","InterDisplay",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --mono:"Geist Mono","JetBrains Mono","SFMono-Regular",monospace;
+  --ease:cubic-bezier(0.32,0.72,0,1);
+}
+
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+button{font:inherit;cursor:pointer;}
+h1,h2,h3,h4,p{margin:0;}
+
+body{
+  width:416px; min-height:200px;
+  font-family:var(--sans); font-size:13px; color:var(--ink-2);
+  background:linear-gradient(180deg, #ECE5D2 0%, #DCD3BC 100%);
+  padding:8px;
+  -webkit-font-smoothing:antialiased;
+}
+
+.popup{
+  position:relative; min-height:200px;
+  background:var(--paper);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 0 0 1px rgba(60,40,10,0.06),
+    0 8px 24px -12px rgba(20,15,5,0.18);
+}
+.popup::before{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  opacity:0.4; mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.32  0 0 0 0 0.27  0 0 0 0 0.18  0 0 0 0.07 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+  z-index:0;
+}
+.popup>*{position:relative; z-index:1;}
+
+/* ─── Masthead ─── */
+.mast{
+  padding:16px 18px 14px;
+  display:grid; grid-template-columns:1fr auto;
+  align-items:center; gap:10px;
+  border-bottom:1px solid var(--rule);
+  background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.brand{display:flex; align-items:center; gap:10px;}
+.mark{
+  display:inline-block; width:28px; height:28px;
+  border-radius:6px; flex-shrink:0;
+}
+.brand-text .name{font-family:var(--serif); font-weight:500; font-size:13.5px; color:var(--ink);}
+.brand-text .sub{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-faint); margin-top:1px;
+}
+.mast .right-actions{display:flex; align-items:center; gap:8px;}
+.mast .logs-link{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-soft); text-decoration:none;
+  padding:4px 8px; border:1px solid var(--rule-2); border-radius:999px;
+}
+.mast .logs-link:hover{border-color:var(--ink); color:var(--ink);}
+.mast #btn-float-mini[data-active="true"]{
+  background:rgba(79,122,77,0.10);
+  border-color:var(--ok);
+  color:var(--ok);
+}
+.mast #btn-float-mini[data-active="true"]:hover{
+  background:rgba(79,122,77,0.18);
+  border-color:var(--ok);
+  color:var(--ok);
+}
+
+.live{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 9px 3px 7px; border-radius:999px;
+  font-family:var(--mono); font-size:9px; letter-spacing:0.12em; text-transform:uppercase; font-weight:600;
+}
+.live[data-state="standby"]{background:transparent; border:1px solid var(--rule-2); color:var(--ink-soft);}
+.live[data-state="connecting"]{background:var(--paper-2); border:1px solid var(--rule-2); color:var(--ink-soft);}
+.live[data-state="ready"]{background:var(--paper-2); border:1px solid var(--rule-2); color:var(--ink-2);}
+.live[data-state="running"]{background:var(--gold-tint); border:1px solid var(--gold-deep); color:#6F4715;}
+.live[data-state="paused"]{background:var(--paper-2); border:1px solid var(--gold-deep); color:#6F4715;}
+.live[data-state="done"]{background:rgba(79,122,77,0.12); border:1px solid var(--ok); color:var(--ok);}
+.live[data-state="warn"]{background:rgba(139,58,46,0.08); border:1px solid var(--err); color:var(--err);}
+.live .dot{width:5px; height:5px; border-radius:50%; background:currentColor;}
+.live[data-state="running"] .dot{animation:pulse 1.4s ease-in-out infinite; background:var(--gold-deep);}
+.live[data-state="connecting"] .dot{animation:pulse 0.8s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
+
+/* ─── Mode strip ─── */
+.mode-strip{
+  padding:8px 14px 9px;
+  border-bottom:1px solid var(--rule);
+  background:var(--paper-2);
+}
+.mode-strip-row{display:flex; align-items:center; gap:10px;}
+.mode-strip .label{
+  font-family:var(--mono); font-size:8.5px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.toggle-pill{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 10px 4px 8px; border-radius:999px;
+  background:transparent; border:1px solid var(--rule-2); color:var(--ink-2);
+  font-family:var(--mono); font-size:9px; font-weight:600;
+  letter-spacing:0.14em; text-transform:uppercase;
+  transition:all 220ms var(--ease);
+}
+.toggle-pill .dot{width:5px; height:5px; border-radius:50%; background:var(--ink-faint);}
+.toggle-pill .state{
+  margin-left:6px; padding-left:7px;
+  border-left:1px solid var(--rule-2);
+  color:var(--ink-faint);
+}
+.toggle-pill[aria-pressed="true"]{background:var(--paper); border-color:var(--gold-deep); color:#6F4715;}
+.toggle-pill[aria-pressed="true"] .dot{background:var(--gold); box-shadow:0 0 0 2.5px rgba(201,144,70,0.18);}
+.toggle-pill[aria-pressed="true"] .state{color:#6F4715; border-left-color:rgba(155,106,38,0.35);}
+.toggle-pill[data-state="checking"] .dot{animation:pulse 1.0s ease-in-out infinite; background:var(--gold-deep);}
+.toggle-pill[data-state="checking"]{border-color:var(--gold-deep); color:#6F4715;}
+.toggle-pill:hover{border-color:var(--ink);}
+.mode-strip .hint{
+  display:block;
+  font-family:var(--mono); font-size:9px; letter-spacing:0.04em;
+  color:var(--ink-faint);
+  margin-top:5px; line-height:1.4;
+}
+.mode-strip .hint-inline{display:inline-block; margin-top:0;}
+
+/* ─── Eyebrow ─── */
+.eyebrow{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--gold-deep);
+}
+.eyebrow::before{content:""; width:16px; height:1px; background:var(--gold-deep);}
+
+/* ─── Hero ─── */
+.hero{
+  padding:24px 22px 22px;
+  border-bottom:1px solid var(--rule);
+  background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.hero h2.title{
+  font-family:var(--serif); font-weight:500; font-size:24px; line-height:1.1;
+  letter-spacing:-0.02em; color:var(--ink); margin-top:14px;
+}
+.hero h2.title em{font-style:italic; font-weight:400;}
+.hero .sub{margin-top:12px; color:var(--ink-soft); font-size:12.5px; line-height:1.6;}
+
+.body{padding:18px 22px 20px;}
+.body+.body{border-top:1px solid var(--rule);}
+.body h3{font-family:var(--serif); font-weight:500; font-size:16px; color:var(--ink); letter-spacing:-0.01em;}
+
+/* ─── Inputs ─── */
+.field-label{
+  display:block;
+  font-family:var(--mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-faint); margin:18px 0 8px;
+}
+.field-label:first-child{margin-top:0;}
+input[type="url"], input[type="text"], input[type="number"], select{
+  width:100%; height:36px; padding:0 12px;
+  border-radius:6px; border:1px solid var(--rule);
+  background:var(--paper);
+  font-family:var(--mono); font-size:11px; color:var(--ink-2);
+  transition:all 200ms var(--ease);
+  -webkit-appearance:none; appearance:none;
+}
+input:focus, select:focus{outline:none; border-color:var(--ink); box-shadow:0 0 0 3px rgba(201,144,70,0.18);}
+select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23A39B89' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 12px center; padding-right:32px; cursor:pointer;
+}
+input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
+.row-range{display:flex; align-items:center; gap:8px;}
+.row-range input{width:100px; text-align:center;}
+.row-range .sep{color:var(--ink-faint); font-family:var(--mono); font-size:11px; letter-spacing:0.1em;}
+.helper{font-family:var(--mono); font-size:9.5px; letter-spacing:0.04em; color:var(--ink-faint); margin-top:8px; line-height:1.5;}
+.helper.warn{color:#6F4715; background:var(--gold-tint); border-radius:6px; padding:8px 11px; border:1px solid rgba(201,144,70,0.35); margin-top:10px;}
+
+/* ─── Buttons ─── */
+.cta{
+  display:inline-flex; align-items:center; gap:8px;
+  height:36px; padding:4px 4px 4px 16px;
+  border-radius:999px;
+  background:var(--ink); color:var(--paper); border:0;
+  font:500 12.5px/1 var(--sans);
+  box-shadow:0 1px 0 rgba(255,255,255,0.07) inset, 0 8px 18px -10px rgba(20,15,5,0.5);
+  transition:transform 240ms var(--ease), background 240ms var(--ease);
+}
+.cta:hover:not(:disabled){transform:translateY(-1px); background:#000;}
+.cta:active:not(:disabled){transform:translateY(0) scale(0.98);}
+.cta:disabled{opacity:0.45; cursor:not-allowed;}
+.cta .pod{
+  width:28px; height:28px; border-radius:50%;
+  background:var(--gold); color:var(--ink);
+  display:inline-flex; align-items:center; justify-content:center; font-size:13px;
+}
+.ghost{
+  height:32px; padding:0 14px; border-radius:999px;
+  background:transparent; color:var(--ink-2); border:1px solid var(--rule-2);
+  font:500 11.5px/1 var(--sans);
+  transition:all 220ms var(--ease);
+}
+.ghost:hover:not(:disabled){border-color:var(--ink); color:var(--ink);}
+.ghost.danger{border-color:rgba(139,58,46,0.4); color:var(--err);}
+.ghost.danger:hover{border-color:var(--err); color:var(--err); background:rgba(139,58,46,0.04);}
+.ghost.warn{border-color:rgba(201,144,70,0.5); color:#6F4715;}
+.actions{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+.actions.between{justify-content:space-between;}
+
+/* ─── Stat strip ─── */
+.stat-strip{
+  display:grid; grid-template-columns:repeat(3,1fr);
+  margin-top:14px;
+  border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+}
+.stat-strip .stat{padding:11px 12px; border-right:1px solid var(--rule);}
+.stat-strip .stat:last-child{border-right:0;}
+.stat-strip .stat .v{font-family:var(--serif); font-weight:500; font-size:18px; color:var(--ink); line-height:1; letter-spacing:-0.015em;}
+.stat-strip .stat .v .dim{color:var(--ink-faint); font-size:13px;}
+.stat-strip .stat .l{font-family:var(--mono); font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--ink-faint); margin-top:4px;}
+
+/* Hero figure (running / done) */
+.figure-row{margin-top:16px; display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;}
+.figure{
+  font-family:var(--serif); font-weight:500; font-size:48px; line-height:0.9;
+  letter-spacing:-0.03em; color:var(--ink);
+}
+.figure .of{color:var(--ink-faint); font-style:italic; font-size:20px; margin-left:6px;}
+.figure-meta{font-family:var(--mono); font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-soft); line-height:1.6;}
+.figure-meta strong{color:var(--ink); font-weight:600;}
+.progress{margin-top:14px; height:4px; background:var(--paper-warm); border-radius:2px; overflow:hidden;}
+.progress>span{display:block; height:100%; background:var(--gold); transition:width 0.6s var(--ease);}
+.progress-meta{display:flex; justify-content:space-between; margin-top:8px; font-family:var(--mono); font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft);}
+.anon-note{
+  margin-top:14px; padding:9px 13px; border-radius:7px;
+  background:rgba(255,255,255,0.55); border-left:2px solid var(--gold-deep);
+  font-size:11.5px; color:var(--ink-soft); line-height:1.5;
+}
+.anon-note strong{color:var(--ink-2); font-weight:600;}
+
+/* Tab-list (sheet tabs picker) */
+.tab-list{list-style:none; padding:0; margin:14px 0 0;}
+.tab-list li{
+  display:grid; grid-template-columns:16px 1fr auto;
+  align-items:center; gap:10px;
+  padding:11px 0; border-bottom:1px solid var(--rule); cursor:pointer;
+}
+.tab-list li:last-child{border-bottom:0;}
+.tab-list li .check{
+  width:14px; height:14px; border-radius:50%;
+  border:1.5px solid var(--rule-2); display:inline-flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.tab-list li[aria-selected="true"] .check{background:var(--ink); border-color:var(--ink); color:var(--paper);}
+.tab-list li[aria-selected="true"] .check::after{content:"✓"; font-size:9px; line-height:1;}
+.tab-list li .nm{font-family:var(--serif); font-weight:500; font-size:13px; color:var(--ink);}
+.tab-list li .ct{font-family:var(--mono); font-size:9.5px; letter-spacing:0.04em; color:var(--ink-soft);}
+
+/* Job preview list (with filter decode) */
+.jobs{list-style:none; padding:0; margin:14px 0 0;}
+.jobs>li{
+  border:1px solid var(--rule); border-radius:10px;
+  background:var(--paper); margin-bottom:8px; overflow:hidden;
+}
+.jobs>li.expanded{box-shadow:0 0 0 1px var(--gold-deep), 0 8px 18px -10px rgba(20,15,5,0.25); border-color:var(--gold-deep);}
+.jobs .row{display:grid; grid-template-columns:22px 1fr auto auto; align-items:center; gap:10px; padding:11px 14px;}
+.jobs .row .num{font-family:var(--mono); font-size:10px; letter-spacing:0.05em; color:var(--ink-faint);}
+.jobs .row .nm{font-family:var(--serif); font-weight:500; font-size:13px; color:var(--ink); line-height:1.2; word-break:break-word;}
+.jobs .row .est{font-family:var(--mono); font-size:9.5px; letter-spacing:0.04em; color:var(--ink-soft); margin-top:2px; word-break:break-all;}
+.jobs .row .toggle{
+  width:32px; height:18px; background:var(--gold); border-radius:999px; position:relative;
+  cursor:pointer; flex-shrink:0; transition:background 200ms var(--ease);
+}
+.jobs .row .toggle::after{
+  content:""; position:absolute; top:2px; right:2px;
+  width:14px; height:14px; border-radius:50%; background:var(--paper);
+  transition:right 200ms var(--ease), left 200ms var(--ease);
+}
+.jobs .row .toggle.off{background:var(--rule-2);}
+.jobs .row .toggle.off::after{right:auto; left:2px;}
+.jobs .row .expand{
+  width:22px; height:22px; border-radius:6px;
+  background:transparent; border:1px solid var(--rule-2); color:var(--ink-soft);
+  display:inline-flex; align-items:center; justify-content:center; font-size:11px; padding:0;
+  flex-shrink:0;
+}
+.jobs>li.expanded .expand{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+
+.filter-detail{padding:0 14px 14px; border-top:1px dashed var(--rule);}
+.filter-detail .header{margin-top:10px; font-family:var(--mono); font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold-deep);}
+.filter-detail .chips{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px;}
+.filter-detail .fchip{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:4px 9px; border-radius:999px;
+  background:var(--gold-tint); color:#6F4715;
+  font-family:var(--mono); font-size:10px; letter-spacing:0.04em;
+  border:1px solid rgba(201,144,70,0.4);
+}
+.filter-detail .fchip .k{
+  font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(111,71,21,0.7);
+  border-right:1px solid rgba(111,71,21,0.25); padding-right:5px; margin-right:1px;
+}
+.filter-detail .fchip.muted{background:var(--paper-2); color:var(--ink-soft); border-color:var(--rule);}
+.filter-detail .fchip.muted .k{color:var(--ink-faint); border-right-color:var(--rule-2);}
+.filter-detail .urn{
+  margin-top:10px;
+  font-family:var(--mono); font-size:9.5px; color:var(--ink-faint);
+  word-break:break-all; line-height:1.5;
+  padding:7px 10px; background:var(--paper-2); border-radius:6px;
+}
+
+/* Live queue (running) */
+.queue{padding:12px 18px 4px;}
+.queue .qlabel{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--ink-faint); margin-bottom:8px;
+}
+.queue ul{list-style:none; margin:0; padding:0; max-height:160px; overflow-y:auto;}
+.queue li{
+  display:grid; grid-template-columns:22px 1fr auto auto; align-items:center; gap:8px;
+  padding:9px 0; border-bottom:1px solid var(--rule);
+}
+.queue li:last-child{border-bottom:0;}
+.queue li .num{font-family:var(--mono); font-size:10px; color:var(--ink-faint);}
+.queue li .info{min-width:0;}
+.queue li .info .nm{font-family:var(--serif); font-weight:500; font-size:13px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.queue li .info .meta{font-family:var(--mono); font-size:9px; color:var(--ink-soft); margin-top:1px; letter-spacing:0.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.queue li .retry{
+  background:transparent; border:1px solid var(--rule-2); color:var(--ink-soft);
+  width:22px; height:22px; border-radius:5px; padding:0;
+  display:inline-flex; align-items:center; justify-content:center; font-size:13px;
+}
+.queue li .retry:hover{border-color:var(--ink); color:var(--ink);}
+.queue li .retry:disabled{opacity:0.4;}
+
+.chip{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 9px; border-radius:999px;
+  font-family:var(--mono); font-size:9px; letter-spacing:0.14em; text-transform:uppercase; font-weight:600;
+  white-space:nowrap;
+}
+.chip.pending{background:var(--paper-2); color:var(--ink-faint); border:1px solid var(--rule);}
+.chip.running{background:var(--gold-tint); color:#6F4715; border:1px solid var(--gold-deep);}
+.chip.paused{background:var(--paper-2); color:#6F4715; border:1px solid var(--gold-deep);}
+.chip.done{background:rgba(79,122,77,0.10); color:var(--ok); border:1px solid rgba(79,122,77,0.4);}
+.chip.partial{background:rgba(201,144,70,0.10); color:#6F4715; border:1px solid rgba(201,144,70,0.4);}
+.chip.error{background:rgba(139,58,46,0.08); color:var(--err); border:1px solid rgba(139,58,46,0.4);}
+.chip.skipped{background:transparent; color:var(--ink-faint); border:1px solid var(--rule-2);}
+.chip .dot{width:4px; height:4px; border-radius:50%; background:currentColor;}
+.chip.running .dot{animation:pulse 1.4s ease-in-out infinite;}
+
+/* ─── Footer ─── */
+.footer-row{
+  padding:10px 18px 14px; border-top:1px solid var(--rule);
+  display:flex; align-items:center; justify-content:space-between; background:var(--paper-2);
+}
+.footer-row .settings-link{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-soft); background:transparent; border:0; padding:0;
+}
+.footer-row .settings-link:hover{color:var(--ink);}
+.footer-row .version{font-family:var(--mono); font-size:9px; letter-spacing:0.08em; color:var(--ink-faint);}
+
+/* ─── Settings ─── */
+.settings .row{
+  display:grid; grid-template-columns:1fr auto; gap:16px;
+  align-items:center; padding:13px 0; border-bottom:1px solid var(--rule);
+}
+.settings .row:last-child{border-bottom:0;}
+.settings .row .label{font-family:var(--serif); font-weight:500; font-size:14px; color:var(--ink);}
+.settings .row .desc{font-size:11.5px; color:var(--ink-soft); line-height:1.5; margin-top:3px;}
+.settings .switch{
+  width:36px; height:20px; border-radius:999px; background:var(--rule-2); position:relative;
+  cursor:pointer; flex-shrink:0; transition:background 200ms var(--ease);
+}
+.settings .switch.on{background:var(--gold);}
+.settings .switch::after{
+  content:""; position:absolute; top:2px; left:2px; width:16px; height:16px;
+  border-radius:50%; background:var(--paper); transition:left 200ms var(--ease);
+}
+.settings .switch.on::after{left:18px;}
+.settings .cmd-pill{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:6px 11px; border-radius:7px;
+  background:var(--paper-2); border:1px solid var(--rule);
+  font-family:var(--mono); font-size:11px; color:var(--ink-2);
+  cursor:pointer; transition:all 200ms var(--ease); white-space:nowrap;
+}
+.settings .cmd-pill:hover{border-color:var(--ink); color:var(--ink);}
+.settings .cmd-pill .copy-hint{
+  font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-faint); border-left:1px solid var(--rule-2); padding-left:8px;
+}
+.settings .cmd-pill.copied{background:rgba(79,122,77,0.10); border-color:var(--ok); color:var(--ok);}
+.settings .cmd-pill.copied .copy-hint{color:var(--ok); border-left-color:rgba(79,122,77,0.35);}
+
+/* ─── Spinner ─── */
+.spin{
+  display:inline-block; width:14px; height:14px;
+  border:1.5px solid var(--rule-2); border-top-color:var(--ink); border-radius:50%;
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ─── Step rail (configure pagination) ─── */
+.step-rail{
+  padding:13px 20px; border-bottom:1px solid var(--rule);
+  display:flex; align-items:center; gap:10px;
+  background:var(--paper);
+}
+.step-rail .step{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:9px; letter-spacing:0.12em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.step-rail .step .num{
+  width:18px; height:18px; border-radius:50%;
+  border:1.5px solid var(--rule-2); display:inline-flex; align-items:center; justify-content:center;
+  font-size:9.5px; font-weight:600;
+}
+.step-rail .step.active{color:var(--ink);}
+.step-rail .step.active .num{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+.step-rail .step.done .num{background:var(--gold); color:var(--ink); border-color:var(--gold);}
+.step-rail .step+.step::before{content:""; width:12px; height:1px; background:var(--rule-2);}
+
+/* Utility */
+.hidden{display:none !important;}
+::-webkit-scrollbar{width:5px; height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--rule-2); border-radius:3px;}
+
+/* legacy compat: preview chips for column previews */
+.col-preview{
+  background:var(--paper-2); border:1px solid var(--rule); border-radius:6px;
+  padding:8px 10px; margin-top:6px; font-family:var(--mono); font-size:10px;
+  color:var(--ink-soft); max-height:80px; overflow-y:auto; line-height:1.6;
+}
+.col-preview span{
+  background:var(--paper); padding:2px 7px; border-radius:4px; margin:1px 2px 1px 0;
+  display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  border:1px solid var(--rule);
+}
+.col-preview em{font-style:italic; color:var(--ink-faint);}
+
+/* sheet link mono pill (single-done view) */
+.sheet-link{
+  margin-top:10px;
+  font-family:var(--mono); font-size:10px; color:var(--gold-deep);
+  word-break:break-all; line-height:1.5;
+  padding:7px 10px; background:var(--paper-2); border-radius:6px;
+  text-decoration:none; display:block;
+}
+.sheet-link:hover{color:var(--ink); background:var(--paper);}
 </style>
 </head>
 <body>
-<div class="header"><div class="header-icon">&#9889;</div><div class="header-text"><h1>Ortus Sales Nav Scraper <span id="app-version"></span></h1><p>API-driven openLink, premium, company data</p></div><a href="#" id="btn-logs" style="font-size:11px;margin-left:auto;color:var(--text-dim);text-decoration:none;padding:4px 8px;border:1px solid var(--border);border-radius:6px;">Logs</a></div>
-<div class="mode-bar"><div><label>Slow Mode</label><div class="mode-hint">For old computers and VMs</div></div><label class="toggle"><input type="checkbox" id="toggle-slow-mode"><span class="slider"></span></label></div>
-<div class="mode-bar"><div><label>Corner Window</label><div class="mode-hint">Shrinks scraping window to a small top-right corner so it stays out of your way.</div></div><label class="toggle"><input type="checkbox" id="toggle-corner-window"><span class="slider"></span></label></div>
-<div class="tabs"><div class="tab active" id="tab-single">This Page</div><div class="tab" id="tab-batch">Batch Scrape</div></div>
 
-<!-- SINGLE views (unchanged) -->
-<div id="view-single-wrong" class="hidden"><div class="section"><div class="status-banner warning"><span class="dot"></span><span>Navigate to a Sales Navigator search page first</span></div><p style="margin-top:12px;font-size:12px;color:var(--text-dim);line-height:1.6;">Go to <a href="https://www.linkedin.com/sales/search/people" target="_blank">Sales Navigator</a>, run your search, then click this extension.</p></div></div>
+<div class="popup">
 
-<div id="view-single-ready" class="hidden"><div class="section"><div class="status-banner success"><span class="dot"></span><span id="ready-status">Sales Nav search detected</span></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="stat-results">-</div><div class="label">Results</div></div><div class="stat-card"><div class="value" id="stat-pages">-</div><div class="label">Pages</div></div></div><div class="field"><label>Result Sheet URL</label><input type="text" id="input-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/..."><div class="input-hint">Where should the scraped profiles go?</div></div><div class="field"><label>Tab Name (optional)</label><input type="text" id="input-sheet-name" placeholder="Sales Nav Scrape"></div></div><div class="section"><button class="btn btn-primary" id="btn-start">Start Scraping</button></div></div>
+  <header class="mast">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 128 128" aria-hidden="true">
+        <rect x="0" y="0" width="128" height="128" rx="22" fill="#16140F"/>
+        <g stroke="#FDFBF7" stroke-width="4" fill="none" stroke-linejoin="miter" stroke-linecap="square">
+          <path d="M64,42 L46,76 L82,76 Z"/>
+          <line x1="64" y1="42" x2="64" y2="76"/>
+          <line x1="55" y1="59" x2="73" y2="59"/>
+          <path d="M30,76 L98,76 L84,94 L44,94 Z"/>
+        </g>
+      </svg>
+      <div class="brand-text">
+        <div class="name">Sales Nav Batch Scraper</div>
+        <div class="sub">Ortus <span id="app-version"></span></div>
+      </div>
+    </div>
+    <div class="right-actions">
+      <button id="btn-float-mini" class="logs-link" type="button" title="Open floating status window — keeps the scrape ticking faster" style="background:transparent;cursor:pointer;">↗ Float</button>
+      <span id="live-badge" class="live" data-state="standby"><span class="dot"></span><span id="live-label">Standby</span></span>
+    </div>
+  </header>
 
-<div id="view-single-progress" class="hidden"><div class="section"><div class="status-banner info"><span class="dot"></span><span id="progress-status">Scraping...</span></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="prog-profiles">0</div><div class="label">Profiles</div></div><div class="stat-card"><div class="value" id="prog-page">0/0</div><div class="label">Page</div></div></div><div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div><div class="progress-meta"><span id="prog-pct">0%</span><span id="prog-eta">Estimating...</span></div></div><div class="section"><div class="btn-row"><button class="btn btn-secondary" id="btn-pause">Pause</button><button class="btn btn-danger" id="btn-stop">Stop</button></div></div></div>
+  <div class="mode-strip">
+    <div class="mode-strip-row">
+      <span class="label">Mode</span>
+      <button class="toggle-pill" id="toggle-slow-mode-pill" aria-pressed="false" type="button">
+        <span class="dot"></span>Slow<span class="state" id="slow-state-label">Off</span>
+      </button>
+      <span class="hint hint-inline">(Old PC, VMs)</span>
+    </div>
+  </div>
 
-<div id="view-single-done" class="hidden"><div class="section"><div class="complete-card"><div class="icon">&#10003;</div><h3>Scraping Complete</h3><p id="complete-summary"></p></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="done-profiles">0</div><div class="label">Profiles</div></div><div class="stat-card"><div class="value" id="done-pages">0</div><div class="label">Pages</div></div><div class="stat-card"><div class="value" id="done-time">0s</div><div class="label">Time</div></div><div class="stat-card"><div class="value" id="done-errors">0</div><div class="label">Errors</div></div></div><button class="btn btn-secondary" id="btn-open-sheet" style="margin-bottom:8px;">Open Sheet</button><button class="btn btn-secondary" id="btn-csv">Download CSV</button></div><div class="section"><button class="btn btn-primary" id="btn-again">Scrape Again</button></div></div>
+  <!-- Hidden compat input — popup.js used a checkbox; we keep the source of truth here -->
+  <input type="checkbox" id="toggle-slow-mode" class="hidden">
+  <input type="checkbox" id="toggle-corner-window" class="hidden">
 
-<div id="view-single-interrupted" class="hidden"><div class="section"><div class="status-banner interrupted"><span class="dot"></span><span id="interrupted-msg">Scraping was interrupted</span></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="int-profiles">0</div><div class="label">Profiles Saved</div></div><div class="stat-card"><div class="value" id="int-page">0/0</div><div class="label">Last Page</div></div></div><p style="font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:14px;">You can resume from where it left off or start fresh.</p><div class="btn-row"><button class="btn btn-warning" id="btn-resume">Resume</button><button class="btn btn-secondary" id="btn-discard">Start Fresh</button></div></div></div>
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: SINGLE-WRONG (user picked "scrape this tab" but isn't on Sales Nav)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-single-wrong" class="hidden">
+    <div class="hero">
+      <span class="eyebrow">No search detected</span>
+      <h2 class="title" style="font-size:21px">Open Sales Navigator first</h2>
+      <p class="sub">Run a search on <a href="https://www.linkedin.com/sales/search/people" target="_blank" style="color:var(--gold-deep); text-decoration:underline; text-underline-offset:3px;">linkedin.com/sales/search/people</a>, then click the extension again — or use a sheet of URLs.</p>
+      <div class="actions" style="margin-top:22px">
+        <button class="ghost" id="btn-back-to-welcome" type="button">← Use a sheet of URLs</button>
+      </div>
+    </div>
+  </section>
 
-<!-- BATCH Step 1: Connect to source sheet -->
-<div id="view-batch-setup" class="hidden"><div class="section"><div class="step-indicator"><div class="step-dot active">1</div><div class="step-line"></div><div class="step-dot">2</div><div class="step-line"></div><div class="step-dot">3</div></div><div class="field"><label>Source Spreadsheet URL</label><input type="text" id="input-src-sheet" placeholder="https://docs.google.com/spreadsheets/d/..."><div class="input-hint">The sheet containing your Sales Nav links</div></div><div style="margin-top:10px;padding:9px 12px;background:var(--yellow-dim);border-radius:8px;font-size:11px;color:var(--yellow);line-height:1.5;">Make sure the spreadsheet sharing is set to <strong>"Anyone with the link"</strong> + <strong>Editor</strong>, otherwise tabs won't load.</div></div><div class="section"><button class="btn btn-primary" id="btn-connect-sheet">Connect</button></div></div>
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: SINGLE-READY (on Sales Nav, ready to scrape this page)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-single-ready" class="hidden">
+    <div class="hero">
+      <span class="eyebrow">This Sales Nav search</span>
+      <h2 class="title" style="font-size:22px"><span id="ready-status">Ready to scrape</span></h2>
+      <div class="stat-strip">
+        <div class="stat"><div class="v" id="stat-results">-</div><div class="l">Results</div></div>
+        <div class="stat"><div class="v" id="stat-pages">-</div><div class="l">Pages</div></div>
+        <div class="stat"><div class="v">25</div><div class="l">per page</div></div>
+      </div>
+      <label class="field-label" for="input-sheet-url">Result sheet</label>
+      <input type="text" id="input-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/…">
+      <label class="field-label" for="input-sheet-name">Tab name</label>
+      <input type="text" id="input-sheet-name" placeholder="Sales Nav Scrape">
+      <div class="actions" style="margin-top:20px">
+        <button class="cta" id="btn-start" type="button">Start scrape<span class="pod">▶</span></button>
+        <button class="ghost" id="btn-go-batch" type="button">Use a sheet of URLs</button>
+      </div>
+    </div>
+  </section>
 
-<!-- BATCH Step 1b: Pick tab -->
-<div id="view-batch-tab-select" class="hidden"><div class="section"><div class="step-indicator"><div class="step-dot active">1</div><div class="step-line"></div><div class="step-dot">2</div><div class="step-line"></div><div class="step-dot">3</div></div><div class="status-banner success"><span class="dot"></span><span id="sheet-title">Connected</span></div><div class="field" style="margin-top:12px"><label>Select Tab</label><select id="sel-src-tab"></select><div class="input-hint" id="tab-row-hint"></div></div></div><div class="section"><div class="btn-row"><button class="btn btn-secondary" id="btn-tab-back">Back</button><button class="btn btn-primary" id="btn-load-tab">Load Data</button></div></div></div>
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: SINGLE-PROGRESS (one scrape running)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-single-progress" class="hidden">
+    <div class="hero">
+      <span class="eyebrow"><span id="progress-status">Scraping</span></span>
+      <div class="figure-row">
+        <div class="figure"><span id="prog-profiles">0</span></div>
+        <div class="figure-meta">
+          Page <strong id="prog-page">0/0</strong><br>
+          <span style="color:var(--ink-faint)" id="prog-eta">Estimating…</span>
+        </div>
+      </div>
+      <div class="progress"><span id="prog-fill" style="width:0%"></span></div>
+      <div class="progress-meta"><span id="prog-pct">0%</span><span id="prog-anon-meta"></span></div>
+      <div class="actions" style="margin-top:20px">
+        <button class="ghost" id="btn-pause" type="button">Pause</button>
+        <button class="ghost danger" id="btn-stop" type="button">Stop</button>
+      </div>
+    </div>
+  </section>
 
-<!-- BATCH Step 2: Configure columns, rows, destination -->
-<div id="view-batch-config" class="hidden"><div class="section"><div class="step-indicator"><div class="step-dot completed">&#10003;</div><div class="step-line"></div><div class="step-dot active">2</div><div class="step-line"></div><div class="step-dot">3</div></div>
-<div class="section-title">Source Data</div>
-<div class="field"><label>Column with Sales Nav URLs</label><select id="sel-url-col"></select><div class="col-preview" id="col-preview"></div></div>
-<div class="field"><label>Row Range</label><div class="row-range"><input type="number" id="input-row-from" min="2" placeholder="2"><span class="range-sep">to</span><input type="number" id="input-row-to" placeholder="All"></div><div class="input-hint">Sheet row numbers (row 1 is the header). Leave "to" empty for all rows.</div></div>
-</div><div class="section">
-<div class="section-title">Destination</div>
-<div class="field"><label>Results Sheet URL</label><input type="text" id="input-dest-sheet" placeholder="https://docs.google.com/spreadsheets/d/..."><div class="input-hint">Where scraped profiles are saved</div></div>
-<div class="field"><label>Tab Name Per Job</label><select id="sel-tab-source"><option value="auto">Auto-number (Scrape 1, Scrape 2...)</option><option value="fixed">Same tab for all</option></select></div>
-<div class="field hidden" id="field-fixed-tab"><label>Tab Name</label><input type="text" id="input-dest-tab" placeholder="Sales Nav Scrape"></div>
-<div class="field hidden" id="field-tab-col"><label>Column with Tab Names</label><select id="sel-tab-col"></select><div class="col-preview" id="tab-col-preview"></div></div>
-</div><div class="section">
-<div class="section-title">Write Back to Source</div>
-<div class="field"><label>Write Result Link to Column</label><select id="sel-output-col"><option value="-1">Don't write back</option></select><div class="input-hint">After each job, the results sheet link is written into this column of the source sheet</div></div>
-</div><div class="section"><div class="btn-row"><button class="btn btn-secondary" id="btn-config-back">Back</button><button class="btn btn-primary" id="btn-batch-confirm">Build Jobs</button></div></div></div>
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: SINGLE-DONE
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-single-done" class="hidden">
+    <div class="hero">
+      <span class="eyebrow">Complete</span>
+      <h2 class="title" style="font-size:22px"><span id="complete-summary">Scraping complete</span></h2>
+      <div class="figure-row">
+        <div class="figure"><span id="done-profiles">0</span><span class="of">leads</span></div>
+        <div class="figure-meta">
+          Pages <strong id="done-pages">0</strong><br>
+          Time <strong id="done-time">0s</strong><br>
+          Errors <strong id="done-errors">0</strong>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:20px">
+        <button class="cta" id="btn-open-sheet" type="button">Open sheet<span class="pod">↗</span></button>
+        <button class="ghost" id="btn-csv" type="button">CSV</button>
+        <button class="ghost" id="btn-again" type="button">Scrape again</button>
+      </div>
+    </div>
+  </section>
 
-<!-- BATCH Step 3: Confirm & start -->
-<div id="view-batch-ready" class="hidden"><div class="section"><div class="step-indicator"><div class="step-dot completed">&#10003;</div><div class="step-line"></div><div class="step-dot completed">&#10003;</div><div class="step-line"></div><div class="step-dot active">3</div></div><div class="status-banner success"><span class="dot"></span><span id="batch-ready-msg">Ready</span></div><ul class="job-list" id="job-list" style="margin-top:12px;max-height:200px;overflow-y:auto;"></ul></div><div class="section"><div class="btn-row"><button class="btn btn-secondary" id="btn-ready-back">Back</button><button class="btn btn-primary" id="btn-start-batch">Start Scraping</button></div></div></div>
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: SINGLE-INTERRUPTED
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-single-interrupted" class="hidden">
+    <div class="hero">
+      <span class="eyebrow">Interrupted</span>
+      <h2 class="title" style="font-size:21px"><span id="interrupted-msg">Scraping was interrupted</span></h2>
+      <p class="sub">You can resume from where it left off, or start fresh.</p>
+      <div class="stat-strip">
+        <div class="stat"><div class="v" id="int-profiles">0</div><div class="l">Saved</div></div>
+        <div class="stat"><div class="v" id="int-page">0/0</div><div class="l">Last page</div></div>
+        <div class="stat"><div class="v">—</div><div class="l">leads</div></div>
+      </div>
+      <div class="actions" style="margin-top:20px">
+        <button class="cta" id="btn-resume" type="button">Resume<span class="pod">▶</span></button>
+        <button class="ghost" id="btn-discard" type="button">Start fresh</button>
+      </div>
+    </div>
+  </section>
 
-<!-- BATCH: Running -->
-<div id="view-batch-running" class="hidden"><div class="section"><div class="status-banner info"><span class="dot"></span><span id="batch-status">Running batch...</span></div><div style="margin-top:12px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:4px"><span id="bp-lbl">Scraping...</span><span id="bp-pct">0%</span></div><div class="progress-bar"><div class="progress-fill" id="bp-bar" style="width:0%"></div></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);margin-top:4px"><span id="bp-n">0 profiles</span><span id="bp-t"></span></div></div><ul class="job-list" id="batch-job-list" style="margin-top:12px;max-height:200px;overflow-y:auto;"></ul></div><div class="section"><div class="btn-row"><button class="btn btn-secondary" id="btn-pause-batch">Pause</button><button class="btn btn-warning" id="btn-recover-batch">Recover</button><button class="btn btn-danger" id="btn-stop-batch">Stop Batch</button></div></div></div>
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: BATCH-SETUP (entry point — paste source sheet)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-batch-setup" class="hidden">
+    <div class="step-rail">
+      <span class="step active"><span class="num">1</span>Sheet</span>
+      <span class="step"><span class="num">2</span>Configure</span>
+      <span class="step"><span class="num">3</span>Run</span>
+    </div>
+    <div class="hero">
+      <span class="eyebrow">Step 1 · Source sheet</span>
+      <h2 class="title">Paste a sheet.<br><em>Get the leads.</em></h2>
+      <p class="sub">A Google Sheet with one Sales Nav search URL per row. We'll batch them and write a results-link back into the source sheet.</p>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin:18px 0 8px;">
+        <label class="field-label" for="input-src-sheet" style="margin:0;">Source sheet URL</label>
+        <button class="toggle-pill" id="toggle-shared-pill" aria-pressed="false" type="button" title="Sharing status — auto-detected">
+          <span class="dot"></span>Shared<span class="state" id="shared-state-label">—</span>
+        </button>
+      </div>
+      <input type="text" id="input-src-sheet" placeholder="https://docs.google.com/spreadsheets/d/…">
+      <div class="actions" style="margin-top:18px">
+        <button class="cta" id="btn-connect-sheet" type="button">Connect<span class="pod">→</span></button>
+        <button class="ghost hidden" id="btn-go-single-link" type="button">Or scrape this Sales Nav tab</button>
+      </div>
+    </div>
+  </section>
 
-<!-- BATCH: Done -->
-<div id="view-batch-done" class="hidden"><div class="section"><div class="complete-card"><div class="icon">&#10003;</div><h3>Batch Complete</h3><p id="batch-done-msg"></p></div></div><div class="section"><ul class="job-list" id="batch-done-list"></ul></div><div class="section"><button class="btn btn-primary" id="btn-batch-again">Run Another Batch</button></div></div>
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: BATCH-TAB-SELECT (pick a tab from the source sheet)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-batch-tab-select" class="hidden">
+    <div class="step-rail">
+      <span class="step done"><span class="num">✓</span>Sheet</span>
+      <span class="step active"><span class="num">2</span>Configure</span>
+      <span class="step"><span class="num">3</span>Run</span>
+    </div>
+    <div class="hero">
+      <span class="eyebrow">Step 2 · Pick a tab</span>
+      <h2 class="title" style="font-size:21px"><span id="sheet-title">Connected</span></h2>
+      <label class="field-label" for="sel-src-tab">Tab</label>
+      <select id="sel-src-tab"></select>
+      <div class="helper" id="tab-row-hint"></div>
+      <div class="actions between" style="margin-top:22px">
+        <button class="ghost" id="btn-tab-back" type="button">Back</button>
+        <button class="cta" id="btn-load-tab" type="button">Load data<span class="pod">→</span></button>
+      </div>
+    </div>
+  </section>
 
-<!-- BATCH: Interrupted -->
-<div id="view-batch-interrupted" class="hidden"><div class="section"><div class="status-banner interrupted"><span class="dot"></span><span id="batch-int-msg">Batch was interrupted</span></div></div><div class="section"><div class="stats-grid"><div class="stat-card"><div class="value" id="bint-done">0</div><div class="label">Jobs Done</div></div><div class="stat-card"><div class="value" id="bint-total">0</div><div class="label">Total Jobs</div></div></div><ul class="job-list" id="batch-int-list" style="margin-top:0;max-height:150px;overflow-y:auto;margin-bottom:14px;"></ul><div class="btn-row"><button class="btn btn-warning" id="btn-resume-batch">Resume</button><button class="btn btn-secondary" id="btn-discard-batch">Start Fresh</button></div></div></div>
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: BATCH-CONFIG (columns, rows, destination, write-back)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-batch-config" class="hidden">
+    <div class="step-rail">
+      <span class="step done"><span class="num">✓</span>Sheet</span>
+      <span class="step active"><span class="num">2</span>Configure</span>
+      <span class="step"><span class="num">3</span>Run</span>
+    </div>
+    <div class="hero" style="padding-bottom:14px">
+      <span class="eyebrow">Source</span>
+      <label class="field-label" for="sel-url-col">Column with Sales Nav URLs</label>
+      <select id="sel-url-col"></select>
+      <div class="col-preview" id="col-preview"></div>
+      <label class="field-label">Row range</label>
+      <div class="row-range">
+        <input type="number" id="input-row-from" min="2" placeholder="2">
+        <span class="sep">to</span>
+        <input type="number" id="input-row-to" placeholder="All">
+      </div>
+      <div class="helper">Sheet row numbers · row 1 is the header</div>
+    </div>
+    <div class="body">
+      <span class="eyebrow">Destination</span>
+      <label class="field-label" for="input-dest-sheet">Results sheet</label>
+      <input type="text" id="input-dest-sheet" placeholder="https://docs.google.com/spreadsheets/d/…">
+      <label class="field-label" for="sel-tab-source">Tab name per job</label>
+      <select id="sel-tab-source">
+        <option value="auto">Auto-number (Scrape 1, Scrape 2…)</option>
+        <option value="fixed">Same tab for all</option>
+      </select>
+      <div id="field-fixed-tab" class="hidden">
+        <label class="field-label" for="input-dest-tab">Tab name</label>
+        <input type="text" id="input-dest-tab" placeholder="Sales Nav Scrape">
+      </div>
+      <div id="field-tab-col" class="hidden">
+        <label class="field-label" for="sel-tab-col">Column with tab names</label>
+        <select id="sel-tab-col"></select>
+        <div class="col-preview" id="tab-col-preview"></div>
+      </div>
+    </div>
+    <div class="body">
+      <span class="eyebrow">Write back</span>
+      <label class="field-label" for="sel-output-col">Result link in column</label>
+      <select id="sel-output-col"><option value="-1">Don't write back</option></select>
+      <div class="helper">After each job, the results sheet link is written into this column of the source sheet.</div>
+      <div class="actions between" style="margin-top:22px">
+        <button class="ghost" id="btn-config-back" type="button">Back</button>
+        <button class="cta" id="btn-batch-confirm" type="button">Build jobs<span class="pod">→</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: BATCH-READY (job preview — with filter decode chips)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-batch-ready" class="hidden">
+    <div class="step-rail">
+      <span class="step done"><span class="num">✓</span>Sheet</span>
+      <span class="step done"><span class="num">✓</span>Configure</span>
+      <span class="step active"><span class="num">3</span>Run</span>
+    </div>
+    <div class="hero" style="padding-bottom:14px">
+      <span class="eyebrow">Confirm what to scrape</span>
+      <h2 class="title" style="font-size:20px"><span id="batch-ready-msg">Ready</span></h2>
+      <p class="sub">Tap a job to decode its Sales Nav filters into chips. Toggle one off to skip it.</p>
+      <ul class="jobs" id="job-list"></ul>
+      <div class="actions between" style="margin-top:20px">
+        <button class="ghost" id="btn-ready-back" type="button">Back</button>
+        <button class="cta" id="btn-start-batch" type="button">Start scrape<span class="pod">▶</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: BATCH-RUNNING (live progress + queue)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-batch-running" class="hidden">
+    <div class="hero">
+      <span class="eyebrow"><span id="batch-status">Now scraping</span></span>
+      <h2 class="title" style="font-size:20px" id="batch-job-name">Job</h2>
+      <p class="sub" id="batch-job-sub"></p>
+      <div class="figure-row">
+        <div class="figure"><span id="bp-n">0</span><span class="of"><span id="bp-t"></span></span></div>
+        <div class="figure-meta">
+          <span id="bp-lbl">Page 1</span><br>
+          <span style="color:var(--ink-faint)" id="bp-eta"></span>
+        </div>
+      </div>
+      <div class="progress"><span id="bp-bar" style="width:0%"></span></div>
+      <div class="progress-meta"><span id="bp-pct">0%</span><span id="bp-anon-meta"></span></div>
+      <div class="anon-note hidden" id="batch-anon-note">
+        <strong id="batch-anon-count">0 leads missing.</strong> Pages where fewer than 25 results were extracted after re-checks. Could be anonymous profiles your account can't see, or pages that failed to fully render.
+      </div>
+      <div class="actions" style="margin-top:20px">
+        <button class="ghost" id="btn-pause-batch" type="button">Pause</button>
+        <button class="ghost warn" id="btn-recover-batch" type="button">Recover</button>
+        <button class="ghost danger" id="btn-stop-batch" type="button">Stop</button>
+      </div>
+    </div>
+    <div class="queue">
+      <div class="qlabel">Queue</div>
+      <ul id="batch-job-list"></ul>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: BATCH-DONE
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-batch-done" class="hidden">
+    <div class="hero">
+      <span class="eyebrow">All done</span>
+      <h2 class="title" style="font-size:20px"><span id="batch-done-msg">Batch complete</span></h2>
+      <div class="actions" style="margin-top:18px">
+        <button class="cta" id="btn-batch-again" type="button">Run another batch<span class="pod">→</span></button>
+      </div>
+    </div>
+    <div class="queue">
+      <div class="qlabel">Summary</div>
+      <ul id="batch-done-list"></ul>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: BATCH-INTERRUPTED
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-batch-interrupted" class="hidden">
+    <div class="hero">
+      <span class="eyebrow">Batch interrupted</span>
+      <h2 class="title" style="font-size:20px"><span id="batch-int-msg">Batch was interrupted</span></h2>
+      <p class="sub">You can resume from where it left off, or start fresh.</p>
+      <div class="stat-strip">
+        <div class="stat"><div class="v" id="bint-done">0</div><div class="l">jobs done</div></div>
+        <div class="stat"><div class="v" id="bint-total">0</div><div class="l">total</div></div>
+        <div class="stat"><div class="v">—</div><div class="l"></div></div>
+      </div>
+      <div class="actions" style="margin-top:20px">
+        <button class="cta" id="btn-resume-batch" type="button">Resume<span class="pod">▶</span></button>
+        <button class="ghost" id="btn-discard-batch" type="button">Start fresh</button>
+      </div>
+    </div>
+    <div class="queue">
+      <div class="qlabel">Jobs</div>
+      <ul id="batch-int-list"></ul>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       VIEW: SETTINGS
+       ════════════════════════════════════════════════════════════════════ -->
+  <section id="view-settings" class="hidden">
+    <div class="hero" style="padding-bottom:8px">
+      <span class="eyebrow">Behavior</span>
+      <h2 class="title" style="font-size:20px">Tune for your machine</h2>
+      <p class="sub">Slow mode lives at the top of every screen — these are the rest. Defaults are sensible.</p>
+    </div>
+    <div class="body settings">
+      <div class="row">
+        <div>
+          <div class="label">Corner window</div>
+          <div class="desc">Shrinks the scraping tab into the top-right corner so you can keep working. On by default — keeps the tab visible (and not throttled).</div>
+        </div>
+        <div class="switch on" id="settings-corner-switch"></div>
+      </div>
+      <div class="row">
+        <div>
+          <div class="label">Auto-open status window</div>
+          <div class="desc">When a scrape starts, automatically open the floating status strip. It keeps the scrape ticking faster — minimize it, don't close it.</div>
+        </div>
+        <div class="switch on" id="settings-float-auto-switch"></div>
+      </div>
+      <div class="row">
+        <div>
+          <div class="label">Prevent Mac sleep</div>
+          <div class="desc">Run this in Terminal during long batches so macOS doesn't sleep mid-scrape. <kbd style="font-family:var(--mono);font-size:10px;color:var(--ink-faint)">⌃C</kbd> to stop.</div>
+        </div>
+        <button class="cmd-pill" id="btn-copy-caffeinate" type="button" aria-label="Copy caffeinate command">
+          <span>caffeinate -i</span>
+          <span class="copy-hint">Copy</span>
+        </button>
+      </div>
+      <div class="row">
+        <div>
+          <div class="label">Chrome Memory Saver</div>
+          <div class="desc">Auto-handled — every scrape tab is pinned as non-discardable so Chrome can't freeze it mid-run. If you still see stalls, open Chrome's performance page and confirm the LinkedIn tab isn't dimmed.</div>
+        </div>
+        <button class="cmd-pill" id="btn-open-perf-settings" type="button" aria-label="Open Chrome performance settings">
+          <span>Open settings</span>
+          <span class="copy-hint">↗</span>
+        </button>
+      </div>
+      <div class="actions" style="margin-top:18px; padding-top:4px;">
+        <button class="ghost" id="btn-settings-back" type="button">← Back</button>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer-row">
+    <button class="settings-link" id="btn-settings-toggle" type="button">Settings ↗</button>
+    <span class="version">v<span id="footer-version"></span> · Ortus</span>
+  </footer>
+
+</div>
 
 <script src="popup.js"></script>
 </body>

@@ -1,0 +1,23 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cream" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ECE5D2"/>
+      <stop offset="100%" stop-color="#DCD3BC"/>
+    </linearGradient>
+    <linearGradient id="inset" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="24" ry="24" fill="url(#cream)"/>
+  <rect x="4" y="4" width="120" height="120" rx="24" ry="24" fill="url(#inset)"/>
+  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="23.25" ry="23.25"
+        fill="none" stroke="#0E0D0C" stroke-opacity="0.18" stroke-width="1.5"/>
+
+  <text x="64" y="86" font-family="Iowan Old Style, Georgia, Palatino, serif"
+        font-size="92" font-weight="500" font-style="italic"
+        fill="#2A2622" text-anchor="middle">S</text>
+
+  <rect x="46" y="100" width="36" height="3" rx="1.5" fill="#A37328"/>
+</svg>

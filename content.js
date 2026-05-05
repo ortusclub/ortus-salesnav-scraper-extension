@@ -1,5 +1,6 @@
 /**
- * TEST CCode 1.0 - Content Script v8
+ * TEST Medium Mode 1.1 - Content Script v8
+ * v1.1 adds: silent audio throttle prevention, throttle event forwarding
  *
  * IMPROVEMENTS over v7:
  * - MutationObserver DOM settling before extraction (catches lazy-rendered cards)
@@ -40,6 +41,15 @@
 
   /* Listen for data from the main-world interceptor (use document, not window,
    * because document is shared across MAIN and ISOLATED worlds in MV3) */
+  /* v4.3 — forward throttle events from interceptor to background */
+  document.addEventListener('__ortus_throttle_detected', function(e) {
+    try {
+      var d = JSON.parse(e.detail);
+      console.log('[Ortus] Content: throttle detected (' + d.status + '), forwarding to background');
+      chrome.runtime.sendMessage({ action: 'throttleDetected', status: d.status, retryAfter: d.retryAfter });
+    } catch(err) {}
+  });
+
   document.addEventListener('__ortus_api_data', function(e) {
     try {
       var data = JSON.parse(e.detail);
@@ -363,8 +373,8 @@
     if (needsPoll) {
       /* Poll until cache covers the expected result count (not just "grew at all").
        * Previous logic exited on first growth, leaving later pages as Unknown. */
-      var pollCount = SLOW_MODE ? 40 : 30;
-      var pollMs = SLOW_MODE ? 1000 : 500;
+      var pollCount = SLOW_MODE ? 20 : 30;
+      var pollMs = SLOW_MODE ? 500 : 500;
       var target = (typeof expectedCount === 'number' && expectedCount > 0) ? expectedCount : 0;
       var reason = cacheSize === 0 ? 'empty cache' : 'waiting for full coverage (cache=' + cacheSize + ', before=' + cacheSizeBefore + ', target=' + target + ')';
       console.log('[Ortus] Enrichment poll: ' + reason + ' (' + (pollCount * pollMs / 1000) + 's max, slow=' + SLOW_MODE + ')...');
@@ -507,7 +517,7 @@
       console.log('[Ortus] WARNING: Timed out waiting for populated items after ' + maxContentWait + 'ms');
     }
     /* Brief settle — waitForResults already confirmed populated items exist */
-    await waitForDomSettle(sd(600,2000), sd(2000,8000));
+    await waitForDomSettle(sd(600,1500), sd(2000,3000));
 
     /* Harvest initial */
     var initial = harvestVisible();
@@ -533,8 +543,8 @@
     var attempt = 0;
     if (allProfiles.size < expectedTotal) {
       var stableCount = 0;
-      var maxStable = sd(3, 6);
-      var maxAttempts = sd(40, 80);
+      var maxStable = sd(3, 4);
+      var maxAttempts = sd(40, 50);
 
       while (attempt < maxAttempts && stableCount < maxStable) {
         attempt++;
@@ -559,9 +569,9 @@
 
         /* v2: Faster waits — DOM settle on first 2 attempts only, then short sleep */
         if (attempt <= 2) {
-          await waitForDomSettle(sd(500,1500), sd(2000,5000));
+          await waitForDomSettle(sd(500,1000), sd(2000,2500));
         } else {
-          await sleep(sd(500,2000));
+          await sleep(sd(500,1000));
         }
 
         /* Harvest again */
@@ -622,14 +632,14 @@
       window.scrollTo(0, document.body.scrollHeight);
       console.log('[Ortus] Scrolled to bottom (no pagination el found)');
     }
-    await sleep(sd(500,3000));
+    await sleep(sd(500,1500));
 
     var result = Array.from(allProfiles.values());
 
     /* v4.0: Apply API enrichment data — openLink, premium, and fill missing company/title */
     try {
       var cacheSizeBefore = Object.keys(apiEnrichCache).length;
-      await sleep(sd(500,8000));
+      await sleep(sd(500,3000));
       var olMap = await fetchOpenLinkMap(cacheSizeBefore, result.length);
       var enrichSize = Object.keys(apiEnrichCache).length;
       if (enrichSize > 0) {
@@ -829,15 +839,72 @@
     return false;
   }
 
-  function navigateToPage(pageNum) {
-    var url = new URL(window.location.href);
+  function navigateToPage(pageNum, baseUrl) {
+    /* Canonical-URL discipline: prefer baseUrl (job.salesNavUrl) over the live URL.
+     * The live URL can be a stripped/redirected variant (LinkedIn SPA can drop filters
+     * mid-session); navigating from it would propagate the wipe across every subsequent page. */
+    var src = baseUrl || window.location.href;
+    if (!baseUrl) console.log('[Ortus] navigateToPage: no canonical baseUrl — falling back to live URL');
+    var url = new URL(src);
     url.searchParams.set('page', pageNum);
     window.location.href = url.toString();
   }
 
   /* ── Message Handler ── */
 
+  /* v1.2 — Anti-throttle layered defense:
+   *   (1) Web Audio oscillator at gain=0 — actively generates audio samples,
+   *       harder for macOS App Nap to dismiss as "no audio activity" than a
+   *       silent dataURI <audio> element.
+   *   (2) MediaSession metadata — declares active media playback to the OS,
+   *       which gets stronger anti-throttle treatment than plain <audio>.
+   *   (3) Fallback <audio> element (for browsers where AudioContext is blocked). */
+  function __ortusStartSilentAudio() {
+    if (window.__ortusSilentAudio) return;
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) {
+        var ac = new Ctx();
+        var osc = ac.createOscillator();
+        var gain = ac.createGain();
+        gain.gain.value = 0; /* silent — no perceptible output */
+        osc.frequency.value = 440;
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start();
+        if (ac.state === 'suspended') {
+          ac.resume().catch(function(e) { console.log('[Ortus] AudioContext resume blocked:', e.message); });
+        }
+        window.__ortusSilentAudio = { ctx: ac, osc: osc, gain: gain };
+        console.log('[Ortus] Web Audio oscillator started (anti-throttle layer 1)');
+      } else {
+        var audio = document.createElement('audio');
+        audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+        audio.loop = true; audio.volume = 0; audio.style.display = 'none';
+        document.documentElement.appendChild(audio);
+        var p = audio.play();
+        if (p && p.catch) p.catch(function(e) { console.log('[Ortus] Silent audio autoplay blocked:', e.message); });
+        window.__ortusSilentAudio = audio;
+        console.log('[Ortus] dataURI silent audio fallback started');
+      }
+    } catch(e) { console.log('[Ortus] Silent audio failed:', e.message); }
+
+    /* MediaSession declaration — separate try/catch so failure doesn't block audio setup */
+    try {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'Sales Nav Batch Scraper',
+          artist: 'Ortus',
+          album: 'Anti-throttle keepalive'
+        });
+        navigator.mediaSession.playbackState = 'playing';
+        console.log('[Ortus] MediaSession declared (anti-throttle layer 2)');
+      }
+    } catch(e) { console.log('[Ortus] MediaSession failed:', e.message); }
+  }
+
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
+    __ortusStartSilentAudio(); /* idempotent; first scrape-related message triggers it */
     console.log('[Ortus] Received:', msg.action);
 
     switch (msg.action) {
@@ -906,7 +973,7 @@
         sendResponse({ success: clickNextPage() });
         break;
       case 'navigateToPage':
-        navigateToPage(msg.page);
+        navigateToPage(msg.page, msg.baseUrl);
         sendResponse({ success: true });
         break;
       case 'checkEmptyState':

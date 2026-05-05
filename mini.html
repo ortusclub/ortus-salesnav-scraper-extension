@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scraping…</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+
+:root{
+  --ink:#16140F; --ink-2:#2C2A24; --ink-soft:#6B6557; --ink-faint:#A39B89;
+  --paper:#FDFBF7; --paper-2:#F6F2E9;
+  --rule:#E5DFD0; --rule-2:#C9C0AC;
+  --gold:#C99046; --gold-deep:#9B6A26; --gold-tint:#F6E8C8;
+  --ok:#4F7A4D; --err:#8B3A2E;
+  --serif:"Newsreader",Georgia,serif;
+  --sans:"Geist",-apple-system,system-ui,sans-serif;
+  --mono:"Geist Mono","SFMono-Regular",monospace;
+}
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+body{
+  font-family:var(--sans); font-size:12px; color:var(--ink-2);
+  background:linear-gradient(180deg, #ECE5D2 0%, #DCD3BC 100%);
+  padding:6px;
+  -webkit-font-smoothing:antialiased;
+  -webkit-app-region:drag;
+}
+.frame{
+  height:calc(100% - 0px);
+  background:var(--paper);
+  border-radius:10px;
+  border:1px solid rgba(60,40,10,0.06);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 4px 14px -8px rgba(20,15,5,0.25);
+  display:grid; grid-template-columns:auto 1fr auto;
+  align-items:center; gap:8px;
+  padding:8px 12px;
+  position:relative;
+}
+.dot-pulse{
+  width:7px; height:7px; border-radius:50%;
+  background:var(--gold-deep);
+  animation:pulse 1.4s ease-in-out infinite;
+  flex-shrink:0;
+}
+@keyframes pulse{0%,100%{opacity:1; transform:scale(1);}50%{opacity:0.4; transform:scale(0.85);}}
+.dot-pulse[data-state="paused"]{background:var(--ink-faint); animation:none;}
+.dot-pulse[data-state="done"]{background:var(--ok); animation:none;}
+.dot-pulse[data-state="idle"]{background:var(--ink-faint); animation:none;}
+.dot-pulse[data-state="error"]{background:var(--err); animation:none;}
+
+.body-text{min-width:0; line-height:1.2;}
+.headline{
+  font-family:var(--serif); font-weight:500; font-size:13.5px; color:var(--ink);
+  letter-spacing:-0.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.headline .dots::after{
+  content:"";
+  display:inline-block;
+  animation:dots 1.4s steps(4,end) infinite;
+  width:1ch; text-align:left;
+}
+@keyframes dots{
+  0%{content:"";}
+  25%{content:".";}
+  50%{content:"..";}
+  75%{content:"...";}
+  100%{content:"";}
+}
+.meta{
+  margin-top:2px;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.08em;
+  color:var(--ink-soft); text-transform:uppercase;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hint-line{
+  margin-top:5px;
+  font-family:var(--mono); font-size:8.5px; letter-spacing:0.06em;
+  color:var(--ink-faint); line-height:1.4;
+}
+.hint-line strong{color:var(--gold-deep); font-weight:600;}
+.btn-icon{
+  -webkit-app-region:no-drag;
+  width:24px; height:24px; border-radius:6px;
+  background:transparent; border:1px solid var(--rule-2); color:var(--ink-soft);
+  cursor:pointer; padding:0; flex-shrink:0;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--sans); font-size:11px; line-height:1;
+  transition:all 200ms cubic-bezier(0.32,0.72,0,1);
+}
+.btn-icon:hover{border-color:var(--ink); color:var(--ink);}
+.btn-icon:disabled{opacity:0.35; cursor:not-allowed;}
+.btn-icon.stop{font-size:13px;}
+.btn-icon.stop:hover:not(:disabled){border-color:var(--err); color:var(--err); background:rgba(139,58,46,0.05);}
+.btn-icon.close:hover{border-color:var(--err); color:var(--err);}
+</style>
+</head>
+<body>
+<div class="frame">
+  <span class="dot-pulse" id="dot" data-state="running"></span>
+  <div class="body-text">
+    <div class="headline" id="headline">Scraping<span class="dots"></span></div>
+    <div class="meta" id="meta">Connecting…</div>
+    <div class="hint-line"><strong>Don't minimize</strong> this or the Sales Nav tab — click anywhere else.</div>
+  </div>
+  <button class="btn-icon close" id="close" type="button" title="Stop the entire campaign and close">✕</button>
+</div>
+<script src="mini.js"></script>
+</body>
+</html>

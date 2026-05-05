@@ -3,8 +3,8 @@ var DELAY_MIN_FAST = 2000;
 var DELAY_MAX_FAST = 4000;
 var DELAY_MIN_SLOW = 6000;
 var DELAY_MAX_SLOW = 10000;
-var SLOW_MODE = false; /* Toggled from popup for older machines */
-var CORNER_WINDOW = false; /* Shrink scraping window to small corner */
+var SLOW_MODE = false; /* Page-to-page pacing — rate-limit safety, NOT hardware-related */
+var CORNER_WINDOW = true; /* Default ON — small corner so it stays visible without dominating the screen */
 var CORNER_WIDTH = 500, CORNER_HEIGHT = 800;
 /* Load settings on startup */
 chrome.storage.local.get(['ortus_slow_mode','ortus_corner_window','ortus_hide_window'],function(d){
@@ -20,12 +20,21 @@ async function createScrapeWindow(url){
   var opts=CORNER_WINDOW
     ?{url:url,focused:false,width:CORNER_WIDTH,height:CORNER_HEIGHT,left:800,top:30}
     :{url:url,focused:false,width:1280,height:900};
-  try{return await chrome.windows.create(opts);}
+  var win;
+  try{win=await chrome.windows.create(opts);}
   catch(e){
     addLog('warn','createScrapeWindow bounds rejected ('+e.message+'), retrying without position');
     delete opts.left;delete opts.top;
-    return await chrome.windows.create(opts);
+    win=await chrome.windows.create(opts);
   }
+  /* Pin the scrape tab as non-discardable so Chrome Memory Saver can't freeze it mid-run. */
+  try{
+    if(win&&win.tabs&&win.tabs[0]){
+      await chrome.tabs.update(win.tabs[0].id,{autoDiscardable:false});
+      addLog('info','Scrape tab pinned (autoDiscardable=false)');
+    }
+  }catch(eAd){addLog('warn','autoDiscardable set failed: '+eAd.message);}
+  return win;
 }
 async function applyCornerState(){
   if(!state.tabId)return{ok:false,error:'No active tab'};
@@ -51,7 +60,9 @@ async function applyCornerState(){
 }
 
 function getDelay(fast,slow){ return SLOW_MODE ? slow : fast; }
-function pageDelay(){ return rDelay(SLOW_MODE?DELAY_MIN_SLOW:DELAY_MIN_FAST, SLOW_MODE?DELAY_MAX_SLOW:DELAY_MAX_FAST); }
+function pageDelay(){
+  return rDelay(SLOW_MODE?DELAY_MIN_SLOW:DELAY_MIN_FAST, SLOW_MODE?DELAY_MAX_SLOW:DELAY_MAX_FAST);
+}
 var SAVE_INTERVAL = 15000; /* Save state every 15s */
 var LOG_MAX = 500; /* Max log entries kept */
 var logBuffer = [];
@@ -89,6 +100,36 @@ var state = {
 var saveTimer = null;
 
 function rDelay(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+/* Filter integrity check: did LinkedIn strip the search filters from the live URL?
+ * Sales Nav search URLs always carry an opaque 'query' param holding the filter blob.
+ * If the live URL is missing 'query' (or it's empty), filters were wiped — recover. */
+function urlFiltersIntact(liveUrl,canonicalUrl){
+  try{
+    var canon=new URL(canonicalUrl);
+    var canonQuery=canon.searchParams.get('query');
+    if(!canonQuery)return true; /* canonical has no query — nothing to enforce */
+    var live=new URL(liveUrl);
+    var liveQuery=live.searchParams.get('query');
+    if(!liveQuery)return false;
+    /* Sales Nav can append/reorder query trailing fragments; require canonical core to be a prefix */
+    var core=canonQuery.length>40?canonQuery.slice(0,40):canonQuery;
+    return liveQuery.indexOf(core)===0;
+  }catch(e){return true;} /* on parse error, don't trigger recovery */
+}
+/* Filter-wipe recovery: full-reload the tab from the canonical URL at page N and re-extract.
+ * Caller discards whatever profiles came back from the wiped page before invoking this. */
+async function recoverFromFilterWipe(tabId,canonicalUrl,pageNum){
+  var fixUrl=new URL(canonicalUrl);
+  fixUrl.searchParams.set('page',pageNum);
+  await chrome.tabs.update(tabId,{url:fixUrl.toString()});
+  await waitTab(tabId,20000);
+  try{await chrome.tabs.setZoom(tabId,0.25);}catch(e){}
+  await new Promise(function(r){setTimeout(r,getDelay(300,800));});
+  try{await chrome.scripting.executeScript({target:{tabId:tabId},files:['content.js']});}catch(e){}
+  await new Promise(function(r){setTimeout(r,getDelay(150,400));});
+  try{await tabMsg(tabId,{action:'waitForResults',timeout:20000});}catch(ew){}
+  return await tabMsg(tabId,{action:'extractProfiles',slow:SLOW_MODE});
+}
 async function waitWhilePaused(){while(state.isPaused&&state.isRunning){await new Promise(function(r){setTimeout(r,500);});}}
 async function recoverBatch(){
   if(!state.isRunning)return{ok:false,error:'Batch not running'};
@@ -128,6 +169,7 @@ chrome.runtime.onMessage.addListener(function(msg,sender,sendResponse){
     case 'stopScrape':stopScrape();sendResponse({ok:true});break;
     case 'exportCSV':sendResponse({csv:toCSV(state.allProfiles)});break;
     /* Batch - flexible input */
+    case 'checkSheetSharing':checkSheetSharing(msg.sheetUrl).then(sendResponse);return true;
     case 'readTabs':readTabs(msg.sheetUrl).then(sendResponse);return true;
     case 'readColumns':readColumns(msg.sheetUrl,msg.tabName).then(sendResponse);return true;
     case 'setJobs':setJobs(msg);sendResponse({ok:true});break;
@@ -137,6 +179,7 @@ chrome.runtime.onMessage.addListener(function(msg,sender,sendResponse){
     case 'resumeBatch':state.isPaused=false;bc();sendResponse({ok:true});break;
     case 'recoverBatch':recoverBatch().then(sendResponse);return true;
     case 'retryJob':retryJobAction(msg.index).then(sendResponse);return true;
+    case 'throttleDetected':addLog('warn','Throttle signal ('+msg.status+') ignored — cooldowns disabled');sendResponse({ok:true});break;
     /* Persistence / resume */
     case 'checkSavedState':checkSavedState().then(sendResponse);return true;
     case 'clearSavedState':clearSavedState().then(sendResponse);return true;
@@ -170,12 +213,44 @@ function resetState(){
 
 function bc(){chrome.runtime.sendMessage({action:'stateUpdate',state:pubState()}).catch(function(){});}
 
+/* Persistent-port keepalive — the mini window opens a "mini-keepalive" port and
+ * holds it for its lifetime. Chrome won't evict the SW while any extension port
+ * is open, even if the mini's JS is throttled (e.g. macOS fullscreen on another
+ * Space). This is more reliable than chrome.alarms for active-scrape scenarios. */
+chrome.runtime.onConnect.addListener(function(port){
+  if(port.name==='mini-keepalive'){
+    /* Existence of the port is the value. Just hold it until the other side closes. */
+    port.onDisconnect.addListener(function(){
+      /* Mini closed or SW restart — nothing to clean up; mini will reconnect on next load. */
+    });
+  }
+});
+
 /* ─── PERSISTENCE ─── */
 function startSaveTimer(){
   stopSaveTimer();
   saveTimer=setInterval(function(){saveState();},SAVE_INTERVAL);
+  startKeepalive();
 }
-function stopSaveTimer(){if(saveTimer){clearInterval(saveTimer);saveTimer=null;}}
+function stopSaveTimer(){if(saveTimer){clearInterval(saveTimer);saveTimer=null;}stopKeepalive();}
+
+/* ─── KEEPALIVE ───
+ * MV3 service workers suspend after ~30s of idle. setInterval can stop firing.
+ * chrome.alarms survives suspension and wakes the SW back up — paired with the
+ * silent-audio/Web-Audio in content.js to defeat macOS App Nap on the page side. */
+var KEEPALIVE_ALARM='ortus-keepalive';
+function startKeepalive(){
+  try{chrome.alarms.create(KEEPALIVE_ALARM,{periodInMinutes:0.4});}catch(e){}
+}
+function stopKeepalive(){
+  try{chrome.alarms.clear(KEEPALIVE_ALARM);}catch(e){}
+}
+chrome.alarms.onAlarm.addListener(function(a){
+  if(a&&a.name===KEEPALIVE_ALARM){
+    /* No-op handler — the wakeup itself is the value. Touch state to prove liveness. */
+    if(state&&state.isRunning){try{saveState();}catch(e){}}
+  }
+});
 
 async function saveState(){
   if(!state.isRunning)return;
@@ -278,6 +353,7 @@ async function startSingle(cfg){
   state.tabId=cfg.tabId;state.currentPage=cfg.startPage||1;state.totalPages=cfg.totalPages||0;
   state.totalResults=cfg.totalResults||0;state.sheetUrl=cfg.sheetUrl||'';state.sheetName=cfg.sheetName||'Sales Nav Scrape';
   state.startTime=Date.now();
+  maybeAutoOpenMini();
   /* Save the Sales Nav URL for resume */
   try{
     var t=await chrome.tabs.get(cfg.tabId);
@@ -294,6 +370,14 @@ async function runSinglePage(){
   try{
     await waitTab(tid);
     var r=await tabMsg(tid,{action:'extractProfiles',slow:SLOW_MODE});
+    /* Post-extraction integrity check — uses pi.url from the result we already have.
+     * Catches both empty-page wipes AND silent fallback wipes (LinkedIn returning
+     * unfiltered results) before we add bad profiles to the collection. */
+    if(state.salesNavUrl&&r&&r.pageInfo&&r.pageInfo.url&&!urlFiltersIntact(r.pageInfo.url,state.salesNavUrl)){
+      addLog('warn','Filters wiped on page '+pg+' — discarding '+(r.profiles?r.profiles.length:0)+' profiles, recovering');
+      try{r=await recoverFromFilterWipe(tid,state.salesNavUrl,pg);}
+      catch(e){addLog('error','Recovery failed: '+e.message);}
+    }
     if(r&&r.profiles){
       for(var i=0;i<r.profiles.length;i++)r.profiles[i].pageNumber=pg;
       state.allProfiles=state.allProfiles.concat(r.profiles);state.profilesScraped+=r.profiles.length;
@@ -315,7 +399,7 @@ async function runSinglePage(){
       saveState();stopSaveTimer();state.isRunning=false;bc();return;
     }
     if(state.isRunning){state.currentPage=pg+1;await new Promise(function(r){setTimeout(r,2000);});
-      try{await tabMsg(tid,{action:'navigateToPage',page:state.currentPage});await waitNav(tid);runSinglePage();}catch(e){
+      try{await tabMsg(tid,{action:'navigateToPage',page:state.currentPage,baseUrl:state.salesNavUrl});await waitNav(tid);runSinglePage();}catch(e){
         notifyError('Scraping stopped due to error on page '+pg+'. You can resume from the extension.');
         saveState();stopSaveTimer();state.isRunning=false;bc();
       }}
@@ -335,6 +419,42 @@ function stopScrape(){
 }
 
 /* ─── BATCH MODE ─── */
+/* Verify a sheet is shared as "Anyone with the link · Editor".
+ * Two-tier check:
+ *   1. Apps Script bridge (checkSharing action) — uses DriveApp.getSharingAccess() +
+ *      getSharingPermission() to verify EDITOR specifically. Most accurate.
+ *   2. Fallback: public CSV export URL — only confirms anyone-with-link viewer-or-better,
+ *      used if the apps script hasn't been redeployed with the new action yet. */
+async function checkSheetSharing(sheetUrl){
+  var m=String(sheetUrl||'').match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if(!m)return{ok:false,error:'Not a valid Google Sheets URL'};
+  var sheetId=m[1];
+  /* Tier 1: apps-script accurate check */
+  try{
+    var resp=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'checkSharing',sheetUrl:sheetUrl}),redirect:'follow'});
+    var data=JSON.parse(await resp.text());
+    if(data&&data.success===true&&typeof data.shared==='boolean'){
+      if(data.shared)return{ok:true,shared:true,via:'appsscript',access:data.access,permission:data.permission};
+      return{ok:true,shared:false,via:'appsscript',error:data.reason||'Sheet not shared as Anyone with the link · Editor'};
+    }
+    /* If success:false and it's the "Unknown action" error, the apps script is stale — fall through to tier 2. */
+    if(data&&data.error&&/unknown/i.test(data.error)){
+      addLog('info','checkSharing: apps script stale, falling back to public-probe');
+    }else if(data&&data.error){
+      /* Real error from apps script — surface it but still try fallback */
+      addLog('warn','checkSharing apps-script error: '+data.error);
+    }
+  }catch(e){addLog('warn','checkSharing apps-script call failed: '+e.message+' — trying fallback');}
+  /* Tier 2: public-export probe (anyone-with-link viewer-or-better) */
+  try{
+    var probeUrl='https://docs.google.com/spreadsheets/d/'+sheetId+'/export?format=csv&gid=0';
+    var resp2=await fetch(probeUrl,{method:'GET',redirect:'manual',credentials:'omit'});
+    if(resp2.status===200)return{ok:true,shared:true,via:'public-probe',note:'Editor permission not verified — apps script outdated'};
+    return{ok:true,shared:false,via:'public-probe',status:resp2.status,error:'Sheet is not publicly shared (status '+resp2.status+'). Set sharing to "Anyone with the link · Editor".'};
+  }catch(e){return{ok:false,error:'Sharing check failed: '+e.message};}
+}
+
 async function readTabs(sheetUrl){
   try{
     var resp=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
@@ -361,11 +481,30 @@ function setJobs(msg){
   state.outputColIdx=msg.outputColIdx||-1;/* 1-indexed column for write-back, -1 = disabled */
 }
 
+/* Auto-open the floating mini status window when a scrape starts (unless disabled).
+ * Setting key: ortus_float_auto — defaults to true. The mini window keeps the SW
+ * alive (constant chrome.runtime traffic), which speeds the scrape. */
+function maybeAutoOpenMini(){
+  chrome.storage.local.get(['ortus_float_auto'],function(d){
+    var enabled=(d&&typeof d.ortus_float_auto!=='undefined')?!!d.ortus_float_auto:true;
+    if(!enabled)return;
+    var miniUrl=chrome.runtime.getURL('mini.html');
+    chrome.windows.getAll({populate:true},function(wins){
+      for(var i=0;i<wins.length;i++){
+        var w=wins[i];if(w.type!=='popup'||!w.tabs||!w.tabs.length)continue;
+        for(var j=0;j<w.tabs.length;j++){if(w.tabs[j].url===miniUrl)return;}
+      }
+      try{chrome.windows.create({url:miniUrl,type:'popup',width:320,height:116,focused:true});}
+      catch(e){addLog('warn','Mini auto-open failed: '+e.message);}
+    });
+  });
+}
+
 async function startBatch(){
   if(state.isRunning)return{ok:false,error:'Running'};
   state.mode='batch';state.isRunning=true;state.startTime=Date.now();state.currentJobIndex=-1;
   chrome.action.setBadgeBackgroundColor({color:'#1a73e8'});
-  startSaveTimer();nextJob();return{ok:true};
+  startSaveTimer();maybeAutoOpenMini();nextJob();return{ok:true};
 }
 
 async function nextJob(){
@@ -411,7 +550,7 @@ async function nextJob(){
     try{await chrome.tabs.setZoom(tab.id,0.25);}catch(e){addLog('warn','Zoom err: '+e.message);}
     await new Promise(function(r){setTimeout(r,getDelay(3000,8000));});
     try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e){}
-    await new Promise(function(r){setTimeout(r,getDelay(500,2000));});
+    await new Promise(function(r){setTimeout(r,getDelay(150,400));});
     /* Wait for results to actually render in DOM before reading page info */
     try{var wr=await tabMsg(tab.id,{action:'waitForResults',timeout:20000});addLog('info','Initial waitForResults: ready='+wr.ready+' items='+wr.items+' waited='+wr.waited+'ms');
       if(wr&&wr.emptyState){
@@ -471,96 +610,46 @@ async function nextJob(){
         /* === STEP A: Wait for content to render, then extract === */
         try{await tabMsg(tab.id,{action:'waitForResults',timeout:15000});}catch(ew){}
         var r=await tabMsg(tab.id,{action:'extractProfiles',slow:SLOW_MODE});
+        /* Post-extraction integrity check: piggybacks on r.pageInfo.url (already in the result).
+         * Catches both empty-page wipes AND silent fallback wipes before bad profiles enter allP. */
+        if(r&&r.pageInfo&&r.pageInfo.url&&!urlFiltersIntact(r.pageInfo.url,job.salesNavUrl)){
+          addLog('warn','Filters wiped on page '+cp+' — discarding '+(r.profiles?r.profiles.length:0)+' profiles, recovering');
+          try{r=await recoverFromFilterWipe(tab.id,job.salesNavUrl,cp);}
+          catch(e){addLog('error','Recovery failed: '+e.message);}
+        }
         if(r&&r.profiles&&r.profiles.length>0){
           for(var i=0;i<r.profiles.length;i++)r.profiles[i].pageNumber=cp;
           allP=allP.concat(r.profiles);pageProfiles=r.profiles.length;consecutiveEmpty=0;recentSkips=0;
           state.profilesScraped=allP.length;state.currentPage=cp;bc();
           addLog('info', 'Page '+cp+': got '+r.profiles.length+', total: '+allP.length+(r.pageInfo?' (pageTotal='+r.pageInfo.totalResults+')':''));
-          /* === PARTIAL PAGE RETRY: LinkedIn shows exactly 25 per non-last page === */
+          /* Sub-25 on a non-final page: keep re-extracting with 6s waits until we hit 25.
+           * Cap at 10 attempts (60s extra per page) so genuinely anonymous-heavy pages don't
+           * loop forever. Do NOT label the missing ones "anonymous" — we don't actually know. */
           if(pageProfiles>0&&pageProfiles<25&&cp<maxPage){
-            addLog('warn','Page '+cp+': only '+pageProfiles+'/25 profiles (not last page), retrying until 25...');
-            var realRetries=0;var maxRealRetries=5;/* Only counts actual extraction attempts, not empty state hits */
-            var emptyHits=0;var maxEmptyHits=10;/* Safety cap on empty state loops */
-            var totalAttempts=0;var maxTotalAttempts=15;/* Absolute cap */
-            while(pageProfiles<25&&realRetries<maxRealRetries&&emptyHits<maxEmptyHits&&totalAttempts<maxTotalAttempts&&state.isRunning){
-              totalAttempts++;
-              /* Wait before reload — shorter for empty state retries, longer for real retries */
-              var partialWait=emptyHits>0?rDelay(10000,20000):rDelay(30000,60000);
-              addLog('info','Page '+cp+' retry #'+totalAttempts+' (real='+realRetries+', empty='+emptyHits+'): waiting '+Math.round(partialWait/1000)+'s...');
-              await new Promise(function(r){setTimeout(r,partialWait);});
+            var SOFT_MAX_ATTEMPTS=5;
+            var softAttempt=0;
+            while(softAttempt<SOFT_MAX_ATTEMPTS&&pageProfiles<25&&state.isRunning){
+              softAttempt++;
+              addLog('info','Page '+cp+' partial ('+pageProfiles+'/25), waiting 6s then re-checking (attempt '+softAttempt+'/'+SOFT_MAX_ATTEMPTS+')');
+              await new Promise(function(r){setTimeout(r,6000);});
               if(!state.isRunning)break;
               try{
-                /* Full page reload */
-                var partialUrl=new URL(job.salesNavUrl);
-                partialUrl.searchParams.set('page',cp);
-                await chrome.tabs.update(tab.id,{url:partialUrl.toString()});
-                await waitTab(tab.id,20000);
-                try{await chrome.tabs.setZoom(tab.id,0.25);}catch(ez){}
-                await new Promise(function(r){setTimeout(r,3000);});
-                try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e){}
-                await new Promise(function(r){setTimeout(r,1000);});
-                /* Check for empty state — if hit, fix it before counting as a real retry */
-                var pageReady=true;
-                try{
-                  var esP=await tabMsg(tab.id,{action:'checkEmptyState'});
-                  if(esP&&esP.emptyState){
-                    emptyHits++;
-                    addLog('warn','Page '+cp+': empty state #'+emptyHits+' ("'+esP.message+'"), nudging...');
-                    /* Try nudge to clear the empty state */
-                    var nudgeOk=false;
-                    try{var nR=await tabMsg(tab.id,{action:'nudgeFilters'});nudgeOk=!!(nR&&nR.success);}catch(en3){}
-                    if(nudgeOk){
-                      addLog('info','Nudge cleared empty state on page '+cp);
-                    }else{
-                      /* Nudge failed — reload again within same attempt */
-                      addLog('info','Nudge failed, reloading page '+cp+' again...');
-                      await new Promise(function(r){setTimeout(r,rDelay(5000,10000));});
-                      await chrome.tabs.update(tab.id,{url:partialUrl.toString()});
-                      await waitTab(tab.id,20000);
-                      try{await chrome.tabs.setZoom(tab.id,0.25);}catch(ez2){}
-                      await new Promise(function(r){setTimeout(r,5000);});
-                      try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e2){}
-                      await new Promise(function(r){setTimeout(r,1000);});
-                      /* Check again */
-                      try{
-                        var esP2=await tabMsg(tab.id,{action:'checkEmptyState'});
-                        if(esP2&&esP2.emptyState){
-                          addLog('warn','Page '+cp+': still empty after reload+nudge+reload, looping...');
-                          pageReady=false;
-                        }
-                      }catch(e3){}
-                    }
-                  }
-                }catch(eCheck){}
-                if(!pageReady)continue;/* Don't count as real retry — page never loaded */
-                /* Page is ready — try extraction */
-                try{await tabMsg(tab.id,{action:'waitForResults',timeout:20000});}catch(ew){}
-                var rP=await tabMsg(tab.id,{action:'extractProfiles',slow:SLOW_MODE});
-                realRetries++;/* NOW count it — we actually attempted extraction */
-                if(rP&&rP.profiles&&rP.profiles.length>=25){
-                  /* Got full page — replace old partial */
+                try{await tabMsg(tab.id,{action:'waitForResults',timeout:10000});}catch(ew){}
+                var rSoft=await tabMsg(tab.id,{action:'extractProfiles',slow:SLOW_MODE});
+                if(rSoft&&rSoft.profiles&&rSoft.profiles.length>pageProfiles){
                   allP=allP.filter(function(p){return p.pageNumber!==cp;});
-                  for(var ip=0;ip<rP.profiles.length;ip++)rP.profiles[ip].pageNumber=cp;
-                  allP=allP.concat(rP.profiles);pageProfiles=rP.profiles.length;
+                  for(var is=0;is<rSoft.profiles.length;is++)rSoft.profiles[is].pageNumber=cp;
+                  allP=allP.concat(rSoft.profiles);pageProfiles=rSoft.profiles.length;
                   state.profilesScraped=allP.length;bc();
-                  addLog('info','Page '+cp+' retry success: got '+rP.profiles.length+' (total: '+allP.length+')');
-                  r=rP;
-                }else if(rP&&rP.profiles&&rP.profiles.length>pageProfiles){
-                  /* Got more than before but still < 25 — update and keep trying */
-                  allP=allP.filter(function(p){return p.pageNumber!==cp;});
-                  for(var ip2=0;ip2<rP.profiles.length;ip2++)rP.profiles[ip2].pageNumber=cp;
-                  allP=allP.concat(rP.profiles);pageProfiles=rP.profiles.length;
-                  state.profilesScraped=allP.length;bc();
-                  addLog('info','Page '+cp+' retry: improved to '+rP.profiles.length+'/25 (total: '+allP.length+'), continuing...');
-                  r=rP;
-                }else{
-                  addLog('warn','Page '+cp+' retry: still '+(rP&&rP.profiles?rP.profiles.length:0)+'/25');
+                  r=rSoft;
                 }
-              }catch(ePartial){addLog('error','Page '+cp+' retry error: '+ePartial.message);}
+              }catch(eSoft){}
             }
             if(pageProfiles<25){
-              addLog('warn','Page '+cp+': could not get 25 after '+totalAttempts+' attempts (real='+realRetries+', empty='+emptyHits+'), adding to skipped for end retry');
-              skippedPages.push(cp);
+              var miss=25-pageProfiles;
+              addLog('warn','Page '+cp+': '+pageProfiles+' leads, '+miss+' missing after '+softAttempt+' re-checks (could be anonymous or extraction issue)');
+            }else{
+              addLog('info','Page '+cp+' recovered to 25 after '+softAttempt+' re-check'+(softAttempt===1?'':'s'));
             }
           }
           /* Send final profiles for this page (may have been updated by partial retry) */
@@ -708,7 +797,7 @@ async function nextJob(){
       if(!navOk){
         try{
           addLog('info','URL nav to page '+cp);
-          await tabMsg(tab.id,{action:'navigateToPage',page:cp});
+          await tabMsg(tab.id,{action:'navigateToPage',page:cp,baseUrl:job.salesNavUrl});
           await waitNav(tab.id);navOk=true;
         }catch(e){
           addLog('warn','URL nav failed: '+e.message+', trying full reload');
@@ -723,9 +812,9 @@ async function nextJob(){
       }
       if(navOk){
         try{await chrome.tabs.setZoom(tab.id,0.25);}catch(e){}
-        await new Promise(function(r){setTimeout(r,getDelay(1000,4000));});
+        await new Promise(function(r){setTimeout(r,getDelay(300,800));});
         try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e){}
-        await new Promise(function(r){setTimeout(r,getDelay(500,2000));});
+        await new Promise(function(r){setTimeout(r,getDelay(150,400));});
         /* Wait for results DOM to be ready before next extraction loop */
         try{await tabMsg(tab.id,{action:'waitForResults',timeout:15000});}catch(ew){}
       }
@@ -769,7 +858,15 @@ async function nextJob(){
     if(totalR>2500&&allP.length>=2500){
       job.status='Done ('+allP.length+' of '+totalR+', LinkedIn limit)';
     }else if(totalR>0&&allP.length<Math.min(totalR,2500)&&allP.length>0){
-      job.status='Partial ('+allP.length+'/'+Math.min(totalR,2500)+')';
+      /* Tolerate small shortfalls — typically anonymized profiles the searcher's account
+       * can't see (out-of-network / privacy-restricted). Only flag Partial for meaningful gaps. */
+      var expected=Math.min(totalR,2500);
+      var deficit=expected-allP.length;
+      if(deficit<=Math.max(5,Math.ceil(expected*0.02))){
+        job.status='Done ('+allP.length+' of '+expected+', '+deficit+' missing)';
+      }else{
+        job.status='Partial ('+allP.length+'/'+expected+')';
+      }
     }else if(totalR===0&&skippedPages.length>=15&&allP.length>0){
       job.status='Partial ('+allP.length+', stopped after '+skippedPages.length+' skipped pages)';
     }else{
@@ -813,199 +910,34 @@ function notifyError(msg){
 }
 
 /* ─── SHEET API ─── */
-var SHEET_HEADERS=['Record ID','First Name','Last Name','Domain','Priority (Company)','Priority (Role)','Priority','Lead Status','Company Name','Job Title','Linkedin Bio','First Phone','First Phone Value','Phone Number','Whatsapp Link','Mobile Phone Number','Email','Email Verification','LinkedIn Membership ID','Location','Notes','Secondary Email','Hubspot URL','Ortus Members','Current Tag','Open Profile','Premium','Linkedin First Connection','Client Lead Status','Apollo Contact ID','ID Check'];
-
-function profileToRow(p){
-  return['',p.firstName||'',p.lastName||'','','','','','',p.company||'',p.jobTitle||'',p.publicUrl||p.profileUrl||'','','','','','',p.linkedinEmail||'','',(p.membershipId||'').toString(),p.location||'','','','','','',p.openProfile||'No',p.premium||'Unknown','','','',p.idUnverified||''];
-}
-
 async function sendSheet(profiles,pg,sheetUrl,sheetName){
-  /* Try direct Google Sheets API first */
-  try{
-    var result=await sendSheetDirect(profiles,sheetUrl,sheetName);
-    if(result)return result;
-  }catch(e){addLog('warn','Direct sheet write failed: '+e.message+', falling back to Apps Script');}
-  /* Fallback to Apps Script */
   var payload={action:'writeProfiles',sheetUrl:sheetUrl,tabName:sheetName,profiles:profiles,pageNumber:pg};
   try{
     var r=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
-    var result=await r.json();
-    /* After Apps Script writes, patch ID Check column for flagged profiles */
-    try{await patchIdCheckColumn(profiles,sheetUrl,sheetName||'Sales Nav Scrape');}catch(e2){addLog('warn','ID Check patch failed: '+e2.message);}
-    return result;
+    return await r.json();
   }
   catch(e){addLog('error','Sheet err: '+e.message);return null;}
 }
 
-async function sendSheetDirect(profiles,sheetUrl,sheetName){
-  var sheetId=extractSheetId(sheetUrl);
-  if(!sheetId)return null;
-  var token=await getGoogleToken();
-  if(!token)return null;
-  var tabName=sheetName||'Sales Nav Scrape';
-
-  /* Check if sheet/tab exists and has headers */
-  var metaUrl='https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'?fields=sheets.properties.title';
-  var metaResp=await fetch(metaUrl,{headers:{'Authorization':'Bearer '+token}});
-  if(metaResp.status===401){
-    await new Promise(function(resolve){chrome.identity.removeCachedAuthToken({token:token},resolve);});
-    token=await getGoogleToken();
-    metaResp=await fetch(metaUrl,{headers:{'Authorization':'Bearer '+token}});
-  }
-  if(!metaResp.ok)throw new Error('Sheets meta '+metaResp.status);
-  var meta=await metaResp.json();
-  var tabExists=false;
-  for(var i=0;i<(meta.sheets||[]).length;i++){
-    if(meta.sheets[i].properties&&meta.sheets[i].properties.title===tabName)tabExists=true;
-  }
-
-  /* Create tab if needed */
-  if(!tabExists){
-    var addResp=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+':batchUpdate',{
-      method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-      body:JSON.stringify({requests:[{addSheet:{properties:{title:tabName}}}]})
-    });
-    if(!addResp.ok)throw new Error('Add tab '+addResp.status);
-    addLog('info','Created tab: '+tabName);
-  }
-
-  /* Check if headers exist (read row 1) */
-  var headerRange=encodeURIComponent("'"+tabName+"'!A1:AE1");
-  var hResp=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+headerRange,{
-    headers:{'Authorization':'Bearer '+token}
-  });
-  var hData=await hResp.json();
-  var needHeaders=!hData.values||!hData.values[0]||hData.values[0].length<5;
-
-  var rows=profiles.map(profileToRow);
-  if(needHeaders)rows.unshift(SHEET_HEADERS);
-
-  /* Append rows */
-  var appendRange=encodeURIComponent("'"+tabName+"'!A1");
-  var appendUrl='https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+appendRange+':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
-  var appendResp=await fetch(appendUrl,{
-    method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-    body:JSON.stringify({majorDimension:'ROWS',values:rows})
-  });
-  if(!appendResp.ok){
-    var errText=await appendResp.text();
-    throw new Error('Append '+appendResp.status+': '+errText.substring(0,200));
-  }
-  addLog('info','Direct sheet write: '+profiles.length+' profiles to '+tabName);
-  return{success:true,count:profiles.length};
-}
-
-async function patchIdCheckColumn(profiles,sheetUrl,tabName){
-  var sheetId=extractSheetId(sheetUrl);
-  if(!sheetId)return;
-  var token=await getGoogleToken();
-  if(!token){addLog('warn','No token for ID Check patch');return;}
-  /* Find how many rows are in the sheet to know where the just-written profiles start */
-  var countRange=encodeURIComponent("'"+tabName+"'!A:A");
-  var resp=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+countRange,{
-    headers:{'Authorization':'Bearer '+token}
-  });
-  if(!resp.ok)throw new Error('Read col A: '+resp.status);
-  var data=await resp.json();
-  var totalRows=(data.values||[]).length;
-  var startRow=totalRows-profiles.length+1;
-  /* Write OK or ? for each profile */
-  var values=profiles.map(function(p){return[p.idUnverified==='?'?'?':'OK'];});
-  var aeRange=encodeURIComponent("'"+tabName+"'!AE"+startRow+":AE"+totalRows);
-  var writeUrl='https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+aeRange+'?valueInputOption=USER_ENTERED';
-  var writeResp=await fetch(writeUrl,{
-    method:'PUT',
-    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-    body:JSON.stringify({range:"'"+tabName+"'!AE"+startRow+":AE"+totalRows,majorDimension:'ROWS',values:values})
-  });
-  if(writeResp.status===401){
-    await new Promise(function(resolve){chrome.identity.removeCachedAuthToken({token:token},resolve);});
-    token=await getGoogleToken();
-    writeResp=await fetch(writeUrl,{
-      method:'PUT',
-      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-      body:JSON.stringify({range:"'"+tabName+"'!AE"+startRow+":AE"+totalRows,majorDimension:'ROWS',values:values})
-    });
-  }
-  if(!writeResp.ok){
-    var errText=await writeResp.text();
-    throw new Error('AE write '+writeResp.status+': '+errText.substring(0,200));
-  }
-  var flagCount=values.filter(function(v){return v[0]==='?';}).length;
-  addLog('info','ID Check column: '+profiles.length+' rows written ('+flagCount+' flagged with ?) in '+tabName);
-}
-
 async function writeBackLink(srcUrl,srcTab,row,col,value){
-  /* Try direct Google Sheets API first (uses user's own Google account) */
-  try{
-    var result=await writeBackDirect(srcUrl,srcTab,row,col,value);
-    if(result)return result;
-  }catch(e){addLog('warn','Direct write-back failed: '+e.message+', falling back to Apps Script');}
-  /* Fallback to Apps Script */
   var payload={action:'writeBackLink',sheetUrl:srcUrl,tabName:srcTab,row:row,col:col,value:value};
   try{var r=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});return await r.json();}
   catch(e){addLog('error','WriteBack err: '+e.message);return null;}
 }
 
-/* ─── DIRECT GOOGLE SHEETS API (uses user's own OAuth token) ─── */
-function extractSheetId(url){
-  var m=url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  return m?m[1]:null;
-}
-
-function colIdxToLetter(idx){
-  /* Convert 1-based column index to letter: 1=A, 2=B, 27=AA */
-  var s='';
-  while(idx>0){idx--;s=String.fromCharCode(65+(idx%26))+s;idx=Math.floor(idx/26);}
-  return s;
-}
-
-async function getGoogleToken(){
-  return new Promise(function(resolve,reject){
-    chrome.identity.getAuthToken({interactive:true},function(token){
-      if(chrome.runtime.lastError){
-        reject(new Error(chrome.runtime.lastError.message));
-      }else{
-        resolve(token);
-      }
-    });
-  });
-}
-
-async function writeBackDirect(srcUrl,srcTab,row,col,value){
-  var sheetId=extractSheetId(srcUrl);
-  if(!sheetId){addLog('warn','Could not extract sheet ID from: '+srcUrl);return null;}
-  var token=await getGoogleToken();
-  if(!token){addLog('warn','No Google token available');return null;}
-  var colLetter=colIdxToLetter(col);
-  var range=encodeURIComponent("'"+srcTab+"'!"+colLetter+row);
-  var apiUrl='https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+range+'?valueInputOption=USER_ENTERED';
-  var resp=await fetch(apiUrl,{
-    method:'PUT',
-    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-    body:JSON.stringify({range:"'"+srcTab+"'!"+colLetter+row,majorDimension:'ROWS',values:[[value]]})
-  });
-  if(resp.status===401){
-    /* Token expired — clear and retry once */
-    addLog('info','Google token expired, refreshing...');
-    await new Promise(function(resolve){chrome.identity.removeCachedAuthToken({token:token},resolve);});
-    token=await getGoogleToken();
-    resp=await fetch(apiUrl,{
-      method:'PUT',
-      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-      body:JSON.stringify({range:"'"+srcTab+"'!"+colLetter+row,majorDimension:'ROWS',values:[[value]]})
-    });
-  }
-  if(!resp.ok){
-    var errText=await resp.text();
-    throw new Error('Sheets API '+resp.status+': '+errText.substring(0,200));
-  }
-  addLog('info','Direct write-back OK: '+srcTab+'!'+colLetter+row);
-  return{success:true};
-}
-
 /* ─── HELPERS ─── */
-function tabMsg(tid,msg){return new Promise(function(res,rej){chrome.tabs.sendMessage(tid,msg,function(r){if(chrome.runtime.lastError)rej(new Error(chrome.runtime.lastError.message));else res(r);});});}
+function tabMsg(tid,msg,timeoutMs){
+  var to=(typeof timeoutMs==='number'&&timeoutMs>0)?timeoutMs:60000;
+  return new Promise(function(res,rej){
+    var done=false;
+    var t=setTimeout(function(){if(done)return;done=true;rej(new Error('tabMsg timeout after '+to+'ms — tab frozen? action='+(msg&&msg.action)));},to);
+    chrome.tabs.sendMessage(tid,msg,function(r){
+      if(done)return;done=true;clearTimeout(t);
+      if(chrome.runtime.lastError)rej(new Error(chrome.runtime.lastError.message));
+      else res(r);
+    });
+  });
+}
 
 function waitTab(tid,to){
   to=to||15000;

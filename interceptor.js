@@ -74,6 +74,15 @@
             }
           } else {
             console.log('[Ortus] salesApiLeadSearch returned status ' + xhr.status);
+            /* v4.3 throttle detection — 429 Too Many Requests, 999 LinkedIn throttle */
+            if (xhr.status === 429 || xhr.status === 999) {
+              var retryAfter = 0;
+              try { retryAfter = parseInt(xhr.getResponseHeader('Retry-After') || '0', 10) || 0; } catch(e) {}
+              console.log('[Ortus] THROTTLE DETECTED: status=' + xhr.status + ' retryAfter=' + retryAfter + 's');
+              document.dispatchEvent(new CustomEvent('__ortus_throttle_detected', {
+                detail: JSON.stringify({ status: xhr.status, retryAfter: retryAfter })
+              }));
+            }
           }
         } catch(e) {
           console.log('[Ortus] Error reading XHR response:', e.message);
