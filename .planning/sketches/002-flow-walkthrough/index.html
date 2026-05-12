@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch 002 — Flow Walkthrough · Variant C</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+body {
+  font-family: var(--sans);
+  background: linear-gradient(180deg, #ECE5D2 0%, #DCD3BC 100%);
+  color: var(--ink-2);
+  min-height: 100vh;
+  padding: 32px 24px 80px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page-head { max-width: 1380px; margin: 0 auto 28px; }
+.page-head .eyebrow {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--gold-deep); display: inline-flex; gap: 8px; align-items: center;
+}
+.page-head .eyebrow::before { content: ""; width: 18px; height: 1px; background: var(--gold-deep); }
+.page-head h1 {
+  font-family: var(--serif); font-weight: 500; font-size: 32px; letter-spacing: -0.02em;
+  color: var(--ink); margin-top: 6px;
+}
+.page-head h1 em { font-style: italic; font-weight: 400; }
+.page-head p { margin-top: 8px; font-size: 13.5px; line-height: 1.55; color: var(--ink-soft); max-width: 720px; }
+
+.flow-grid {
+  max-width: 1380px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(3, 400px); gap: 56px 36px;
+  justify-content: center;
+}
+@media (max-width: 1340px) { .flow-grid { grid-template-columns: repeat(2, 400px); } }
+@media (max-width: 880px) { .flow-grid { grid-template-columns: 400px; } }
+
+.step {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.step .caption { display: flex; flex-direction: column; gap: 4px; }
+.step .caption .num {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--gold-deep);
+}
+.step .caption .name {
+  font-family: var(--serif); font-weight: 500; font-size: 18px; color: var(--ink); letter-spacing: -0.01em;
+}
+.step .caption .desc {
+  font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; max-width: 380px;
+}
+
+/* === Popup (Variant C base) === */
+.popup {
+  width: 400px;
+  background: var(--paper);
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.9) inset, 0 0 0 1px rgba(60,40,10,0.04), 0 30px 60px -28px rgba(20,15,5,0.35);
+  font-family: var(--sans); font-size: 13px; color: var(--ink-2);
+}
+.popup::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  opacity: 0.45; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.32  0 0 0 0 0.27  0 0 0 0 0.18  0 0 0 0.07 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+}
+.popup > * { position: relative; z-index: 1; }
+
+.mast {
+  padding: 16px 20px 14px;
+  display: grid; grid-template-columns: 1fr auto;
+  align-items: center; gap: 12px;
+  border-bottom: 1px solid var(--rule);
+  background: linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.mark {
+  position: relative; width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--ink);
+  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-size: 21px; line-height: 1; letter-spacing: -0.02em;
+}
+.mark::after { content: ""; position: absolute; right: -5px; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--gold); }
+.brand-text .name { font-family: var(--serif); font-weight: 500; font-size: 14px; color: var(--ink); }
+.brand-text .sub { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); margin-top: 1px; }
+
+.live {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px 3px 7px; border-radius: 999px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600;
+}
+.live[data-state="standby"] { background: transparent; border: 1px solid var(--rule-2); color: var(--ink-soft); }
+.live[data-state="connecting"] { background: var(--paper-2); border: 1px solid var(--rule-2); color: var(--ink-soft); }
+.live[data-state="ready"] { background: var(--paper-2); border: 1px solid var(--rule-2); color: var(--ink-2); }
+.live[data-state="running"] { background: var(--gold-tint); border: 1px solid var(--gold-deep); color: #6F4715; }
+.live[data-state="done"] { background: rgba(79,122,77,0.12); border: 1px solid var(--ok); color: var(--ok); }
+.live .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.live[data-state="running"] .dot { animation: pulse 1.4s ease-in-out infinite; background: var(--gold-deep); }
+.live[data-state="connecting"] .dot { animation: pulse 0.8s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--gold-deep);
+}
+.eyebrow::before { content: ""; width: 16px; height: 1px; background: var(--gold-deep); }
+
+.hero {
+  padding: 22px 22px 22px;
+  border-bottom: 1px solid var(--rule);
+  background: linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.hero h2.title {
+  font-family: var(--serif); font-weight: 500; font-size: 26px; line-height: 1.05;
+  letter-spacing: -0.02em; color: var(--ink); margin-top: 10px;
+}
+.hero h2.title em { font-style: italic; font-weight: 400; }
+.hero .sub { margin-top: 8px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.55; }
+
+.field-label {
+  display: block;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-faint); margin: 14px 0 6px;
+}
+input[type="url"], input[type="text"], select {
+  width: 100%; height: 38px; padding: 0 12px;
+  border-radius: 6px; border: 1px solid var(--rule);
+  background: var(--paper);
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+  transition: all 200ms var(--ease);
+  -webkit-appearance: none; appearance: none;
+}
+input:focus, select:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(201,144,70,0.18); }
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23A39B89' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
+  cursor: pointer;
+}
+.row-range { display: flex; align-items: center; gap: 8px; }
+.row-range input { width: 100px; text-align: center; font-family: var(--mono); }
+.row-range .sep { color: var(--ink-faint); font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; }
+
+.helper { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--ink-faint); margin-top: 6px; }
+
+.cta {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 38px; padding: 4px 4px 4px 16px;
+  border-radius: 999px;
+  background: var(--ink); color: var(--paper); border: 0;
+  font: 500 12.5px/1 var(--sans);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.07) inset, 0 10px 22px -10px rgba(20,15,5,0.5);
+}
+.cta .pod {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--gold); color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.cta:disabled { opacity: 0.45; cursor: not-allowed; }
+.ghost {
+  height: 32px; padding: 0 14px; border-radius: 999px;
+  background: transparent; color: var(--ink-2); border: 1px solid var(--rule-2);
+  font: 500 11.5px/1 var(--sans);
+}
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.actions.between { justify-content: space-between; }
+
+.body { padding: 18px 20px 18px; }
+.body + .body { border-top: 1px solid var(--rule); }
+.body h3 { font-family: var(--serif); font-weight: 500; font-size: 16px; color: var(--ink); letter-spacing: -0.01em; }
+.body .desc { font-size: 12px; color: var(--ink-soft); line-height: 1.55; margin-top: 4px; }
+
+/* Connecting spinner */
+.spin {
+  display: inline-block; width: 14px; height: 14px;
+  border: 1.5px solid var(--rule-2); border-top-color: var(--ink); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Tab list (sheet tabs) */
+.tab-list { list-style: none; padding: 0; margin: 14px 0 0; }
+.tab-list li {
+  display: grid; grid-template-columns: 16px 1fr auto;
+  align-items: center; gap: 10px;
+  padding: 11px 0; border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+}
+.tab-list li:last-child { border-bottom: 0; }
+.tab-list li .check {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid var(--rule-2); display: inline-flex; align-items: center; justify-content: center;
+}
+.tab-list li[aria-selected="true"] .check {
+  background: var(--ink); border-color: var(--ink); color: var(--paper);
+}
+.tab-list li[aria-selected="true"] .check::after { content: "✓"; font-size: 9px; line-height: 1; }
+.tab-list li .nm { font-family: var(--serif); font-weight: 500; font-size: 13.5px; color: var(--ink); }
+.tab-list li .ct { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--ink-soft); }
+
+/* Job list (preview) */
+.jobs { list-style: none; padding: 0; margin: 14px 0 0; }
+.jobs > li {
+  border: 1px solid var(--rule); border-radius: 10px;
+  background: var(--paper);
+  margin-bottom: 8px; overflow: hidden;
+}
+.jobs > li.expanded { box-shadow: 0 0 0 1px var(--gold-deep), 0 8px 18px -10px rgba(20,15,5,0.25); border-color: var(--gold-deep); }
+.jobs .row {
+  display: grid; grid-template-columns: 22px 1fr auto auto;
+  align-items: center; gap: 10px;
+  padding: 12px 14px;
+}
+.jobs .row .num { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ink-faint); }
+.jobs .row .nm { font-family: var(--serif); font-weight: 500; font-size: 13.5px; color: var(--ink); line-height: 1.2; }
+.jobs .row .est { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--ink-soft); margin-top: 2px; }
+.jobs .row .toggle {
+  width: 32px; height: 18px; background: var(--gold);
+  border-radius: 999px; position: relative; cursor: pointer;
+}
+.jobs .row .toggle::after {
+  content: ""; position: absolute; top: 2px; right: 2px;
+  width: 14px; height: 14px; border-radius: 50%; background: var(--paper);
+}
+.jobs .row .toggle.off { background: var(--rule-2); }
+.jobs .row .toggle.off::after { right: auto; left: 2px; }
+.jobs .row .expand {
+  width: 22px; height: 22px; border-radius: 6px;
+  background: transparent; border: 1px solid var(--rule-2); color: var(--ink-soft);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 11px; padding: 0;
+}
+.jobs > li.expanded .expand { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.filter-detail {
+  padding: 0 14px 14px;
+  border-top: 1px dashed var(--rule);
+}
+.filter-detail .header {
+  margin-top: 12px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--gold-deep);
+}
+.filter-detail .chips {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px;
+}
+.filter-detail .chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--gold-tint); color: #6F4715;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+  border: 1px solid rgba(201,144,70,0.4);
+}
+.filter-detail .chip .k {
+  font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(111,71,21,0.7);
+  border-right: 1px solid rgba(111,71,21,0.25); padding-right: 5px; margin-right: 1px;
+}
+.filter-detail .chip.muted {
+  background: var(--paper-2); color: var(--ink-soft); border-color: var(--rule);
+}
+.filter-detail .chip.muted .k { color: var(--ink-faint); border-right-color: var(--rule-2); }
+.filter-detail .urn {
+  margin-top: 10px;
+  font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint);
+  word-break: break-all; line-height: 1.5;
+  padding: 8px 10px; background: var(--paper-2); border-radius: 6px;
+}
+
+/* Stat strip (used in Configure preview & summary) */
+.stat-strip {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  margin-top: 14px;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+}
+.stat-strip .stat { padding: 11px 12px; border-right: 1px solid var(--rule); }
+.stat-strip .stat:last-child { border-right: 0; }
+.stat-strip .stat .v { font-family: var(--serif); font-weight: 500; font-size: 18px; color: var(--ink); line-height: 1; letter-spacing: -0.015em; }
+.stat-strip .stat .l { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); margin-top: 4px; }
+
+/* Hero figure (running / done) */
+.figure-row { margin-top: 18px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.figure {
+  font-family: var(--serif); font-weight: 500; font-size: 56px; line-height: 0.9;
+  letter-spacing: -0.03em; color: var(--ink);
+}
+.figure .of { color: var(--ink-faint); font-style: italic; font-size: 24px; margin-left: 6px; }
+.figure-meta { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); }
+.figure-meta strong { color: var(--ink); font-weight: 600; }
+.progress { margin-top: 14px; height: 4px; background: var(--paper-warm); border-radius: 2px; overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--gold); }
+.progress-meta { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.anon-note {
+  margin-top: 14px; padding: 9px 13px; border-radius: 7px;
+  background: rgba(255,255,255,0.55); border-left: 2px solid var(--gold-deep);
+  font-size: 11.5px; color: var(--ink-soft); line-height: 1.5;
+}
+.anon-note strong { color: var(--ink-2); font-weight: 600; }
+
+/* Footer (settings link / version) */
+.footer-row {
+  padding: 12px 20px 16px; border-top: 1px solid var(--rule);
+  display: flex; align-items: center; justify-content: space-between; background: var(--paper-2);
+}
+.footer-row .settings-link {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-soft); background: transparent; border: 0; padding: 0;
+}
+.footer-row .version { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--ink-faint); }
+
+/* Settings panel */
+.settings .row {
+  display: grid; grid-template-columns: 1fr auto; gap: 16px;
+  align-items: center; padding: 14px 0; border-bottom: 1px solid var(--rule);
+}
+.settings .row:last-child { border-bottom: 0; }
+.settings .row .label { font-family: var(--serif); font-weight: 500; font-size: 14px; color: var(--ink); }
+.settings .row .desc { font-size: 11.5px; color: var(--ink-soft); line-height: 1.5; margin-top: 3px; }
+.settings .switch {
+  width: 36px; height: 20px; border-radius: 999px; background: var(--rule-2); position: relative; cursor: pointer;
+}
+.settings .switch.on { background: var(--gold); }
+.settings .switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--paper); transition: left 200ms var(--ease);
+}
+.settings .switch.on::after { left: 18px; }
+
+/* Job item — running variant */
+.queue { padding: 14px 20px 4px; }
+.queue .qlabel {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-faint); margin-bottom: 8px;
+}
+.queue ul { list-style: none; margin: 0; padding: 0; }
+.queue li {
+  display: grid; grid-template-columns: 22px 1fr auto;
+  align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--rule);
+}
+.queue li:last-child { border-bottom: 0; }
+.queue li .num { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+.queue li .info .nm { font-family: var(--serif); font-weight: 500; font-size: 13.5px; color: var(--ink); }
+.queue li .info .meta { font-family: var(--mono); font-size: 9.5px; color: var(--ink-soft); margin-top: 1px; letter-spacing: 0.05em; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+}
+.chip.pending { background: var(--paper-2); color: var(--ink-faint); border: 1px solid var(--rule); }
+.chip.running { background: var(--gold-tint); color: #6F4715; border: 1px solid var(--gold-deep); }
+.chip.done { background: rgba(79,122,77,0.10); color: var(--ok); border: 1px solid rgba(79,122,77,0.4); }
+.chip .dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.chip.running .dot { animation: pulse 1.4s ease-in-out infinite; }
+
+/* Mode strip — slow mode surfaced out of settings */
+.mode-strip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+.mode-strip .label {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.toggle-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background: transparent; border: 1px solid var(--rule-2);
+  color: var(--ink-2);
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  transition: all 220ms var(--ease);
+}
+.toggle-pill .dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--ink-faint);
+}
+.toggle-pill[aria-pressed="true"] {
+  background: var(--paper); border-color: var(--gold-deep); color: #6F4715;
+}
+.toggle-pill[aria-pressed="true"] .dot {
+  background: var(--gold); box-shadow: 0 0 0 2.5px rgba(201,144,70,0.18);
+}
+.toggle-pill:hover { border-color: var(--ink); }
+.mode-strip .hint {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em;
+  color: var(--ink-faint); margin-left: auto;
+}
+
+/* Step badge above hero */
+.step-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--paper-2); border: 1px solid var(--rule-2);
+  color: var(--ink-soft);
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600;
+}
+.step-badge .pip {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--gold);
+}
+
+/* Job card mini for running */
+.job-active {
+  padding: 14px 16px; border: 1px solid var(--rule); border-radius: 10px;
+  background: var(--paper);
+  margin-top: 14px;
+}
+.job-active .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.job-active .nm { font-family: var(--serif); font-weight: 500; font-size: 14px; color: var(--ink); }
+.job-active .micro { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--ink-soft); margin-top: 3px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="eyebrow">Sketch 002 · Flow Walkthrough</div>
+  <h1>Every step, in <em>Variant C</em>'s language</h1>
+  <p>From first open to all-jobs done, including the filter-decode panel that translates an opaque
+     Sales Nav URL into human-readable chips. Same paper, ink, and gold — same masthead, footer, and chip system across every state.</p>
+</div>
+
+<div class="flow-grid">
+
+  <!-- ─── 1. First open ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 1</span>
+      <span class="name">First open</span>
+      <span class="desc">Empty welcome. One ask: paste the source sheet that holds the Sales Nav URLs.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">Ortus · v3.7.2</div></div></div>
+        <span class="live" data-state="standby"><span class="dot"></span>Standby</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero">
+        <span class="eyebrow">Welcome</span>
+        <h2 class="title">Paste a sheet.<br><em>We'll do the rest.</em></h2>
+        <p class="sub">Drop a Google Sheet of Sales Nav search URLs — one per row. We'll batch through them and write the leads back, with a link in your source sheet for every search.</p>
+        <label class="field-label">Source sheet</label>
+        <input type="url" placeholder="https://docs.google.com/spreadsheets/d/…">
+        <div class="helper">Sharing: anyone with the link · editor</div>
+        <div class="actions" style="margin-top:18px">
+          <button class="cta" disabled>Connect<span class="pod">→</span></button>
+          <button class="ghost">Or paste a single search</button>
+        </div>
+      </section>
+      <div class="footer-row"><button class="settings-link">Settings ↗</button><span class="version">v3.7.2 · Ortus</span></div>
+    </div>
+  </div>
+
+  <!-- ─── 2. Connecting ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 2</span>
+      <span class="name">Connecting</span>
+      <span class="desc">After paste — quick fetch to read the spreadsheet and list its tabs.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">Ortus · v3.7.2</div></div></div>
+        <span class="live" data-state="connecting"><span class="dot"></span>Connecting</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero">
+        <span class="eyebrow">Reading sheet</span>
+        <h2 class="title" style="font-size:22px">Q2 Outreach Master</h2>
+        <p class="sub">Fetching tabs and row counts…</p>
+        <div style="margin-top:22px; display:flex; align-items:center; gap:10px;">
+          <span class="spin"></span>
+          <span style="font-family:var(--mono); font-size:10.5px; letter-spacing:0.06em; color:var(--ink-soft)">Listing tabs · 3 found</span>
+        </div>
+        <div style="margin-top:14px; padding:10px 12px; background:var(--paper-2); border-radius:7px; font-family:var(--mono); font-size:10px; color:var(--ink-faint); word-break:break-all; line-height:1.5">
+          docs.google.com/spreadsheets/d/1RfRDb…ksYNkho
+        </div>
+      </section>
+      <div class="footer-row"><button class="settings-link">Cancel</button><span class="version">v3.7.2 · Ortus</span></div>
+    </div>
+  </div>
+
+  <!-- ─── 3. Pick a tab ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 3</span>
+      <span class="name">Pick a tab</span>
+      <span class="desc">Sheet connected. Choose which tab in the spreadsheet holds the Sales Nav URLs.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">Ortus · v3.7.2</div></div></div>
+        <span class="live" data-state="ready"><span class="dot"></span>Connected</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero">
+        <span class="eyebrow">Step 1 of 3 · Tab</span>
+        <h2 class="title" style="font-size:22px">Q2 Outreach Master</h2>
+        <p class="sub">Three tabs found. Which one has the search URLs?</p>
+        <ul class="tab-list">
+          <li>
+            <span class="check"></span>
+            <div><div class="nm">CMOs · UK</div><div class="ct" style="font-family:var(--mono); font-size:9.5px; letter-spacing:0.06em; color:var(--ink-soft); margin-top:1px">12 rows</div></div>
+            <span class="ct">12</span>
+          </li>
+          <li aria-selected="true">
+            <span class="check"></span>
+            <div><div class="nm">Q2 Searches</div><div class="ct" style="font-family:var(--mono); font-size:9.5px; letter-spacing:0.06em; color:var(--ink-soft); margin-top:1px">3 rows · used last time</div></div>
+            <span class="ct">3</span>
+          </li>
+          <li>
+            <span class="check"></span>
+            <div><div class="nm">Backlog</div><div class="ct" style="font-family:var(--mono); font-size:9.5px; letter-spacing:0.06em; color:var(--ink-soft); margin-top:1px">28 rows</div></div>
+            <span class="ct">28</span>
+          </li>
+        </ul>
+        <div class="actions" style="margin-top:18px">
+          <button class="cta">Continue<span class="pod">→</span></button>
+          <button class="ghost">Back</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ─── 4. Configure ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 4</span>
+      <span class="name">Configure</span>
+      <span class="desc">Pick the URL column, optional tab-name column, output column, and the destination spreadsheet.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">Q2 Searches · 3 rows</div></div></div>
+        <span class="live" data-state="ready"><span class="dot"></span>Step 2 of 3</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero" style="padding-bottom:12px">
+        <span class="eyebrow">Source</span>
+        <label class="field-label" style="margin-top:8px">Column with Sales Nav URLs</label>
+        <select><option>C — search_url</option></select>
+        <label class="field-label">Row range</label>
+        <div class="row-range">
+          <input type="text" value="2"><span class="sep">to</span><input type="text" value="All">
+        </div>
+        <div class="helper">Header is row 1 · 3 jobs to build</div>
+      </section>
+      <section class="body">
+        <span class="eyebrow">Destination</span>
+        <label class="field-label">Results sheet</label>
+        <input type="url" value="docs.google.com/spreadsheets/d/1Rf…ksYNkho">
+        <label class="field-label">Tab name per job</label>
+        <select><option>Auto · "Scrape — {row}"</option><option>Same tab for all</option><option>Use a column</option></select>
+      </section>
+      <section class="body">
+        <span class="eyebrow">Write back</span>
+        <label class="field-label">Result link in column</label>
+        <select><option>F — results_link</option><option>(don't write back)</option></select>
+        <div class="actions between" style="margin-top:18px">
+          <button class="ghost">Back</button>
+          <button class="cta">Build jobs<span class="pod">→</span></button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ─── 5. Job preview / Filter decode ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 5</span>
+      <span class="name">Job preview · Filter decode</span>
+      <span class="desc">Three jobs, each derived from a row. Tap the chevron to decode the URL into human-readable filter chips. Toggle a job off to skip it.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">3 jobs ready</div></div></div>
+        <span class="live" data-state="ready"><span class="dot"></span>Step 3 of 3</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero" style="padding-bottom:14px">
+        <span class="eyebrow">Confirm what to scrape</span>
+        <h2 class="title" style="font-size:21px">3 jobs · ~4,580 leads</h2>
+        <p class="sub">Each job is one Sales Nav search. Expand to see the filters we read out of the URL.</p>
+        <ul class="jobs">
+          <li>
+            <div class="row">
+              <span class="num">01</span>
+              <div><div class="nm">CMOs · UK</div><div class="est">1,884 leads · 76 pages</div></div>
+              <div class="toggle"></div>
+              <button class="expand">▾</button>
+            </div>
+          </li>
+          <li class="expanded">
+            <div class="row">
+              <span class="num">02</span>
+              <div><div class="nm">VPs Marketing · DACH</div><div class="est">412 leads · 17 pages</div></div>
+              <div class="toggle"></div>
+              <button class="expand">▴</button>
+            </div>
+            <div class="filter-detail">
+              <div class="header">Filters decoded</div>
+              <div class="chips">
+                <span class="chip"><span class="k">Title</span>VP Marketing</span>
+                <span class="chip"><span class="k">Geo</span>Germany · Austria · Switzerland</span>
+                <span class="chip"><span class="k">Seniority</span>VP+</span>
+                <span class="chip"><span class="k">Company size</span>201–1,000</span>
+                <span class="chip muted"><span class="k">Posted</span>Past 90 days</span>
+              </div>
+              <div class="urn">linkedin.com/sales/search/people?keywords=vp%20marketing&geoIncluded=101282230&companySize=D…</div>
+            </div>
+          </li>
+          <li>
+            <div class="row">
+              <span class="num">03</span>
+              <div><div class="nm">Sales Reps · US Bay</div><div class="est">2,284 leads · 92 pages</div></div>
+              <div class="toggle off"></div>
+              <button class="expand">▾</button>
+            </div>
+          </li>
+        </ul>
+        <div class="actions between" style="margin-top:18px">
+          <button class="ghost">Back</button>
+          <button class="cta">Start 2 jobs<span class="pod">▶</span></button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ─── 6. Running (job 2 of 3) ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 6</span>
+      <span class="name">Running</span>
+      <span class="desc">Hero owns the popup. Big serif figure for collected leads, gold pulse on the live badge, calm anonymous note.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">Ortus · Job 2 of 3</div></div></div>
+        <span class="live" data-state="running"><span class="dot"></span>Live</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero">
+        <span class="eyebrow">Now scraping</span>
+        <h2 class="title" style="font-size:22px">CMOs · UK</h2>
+        <p class="sub">CMO · United Kingdom</p>
+        <div class="figure-row">
+          <div class="figure">1,275<span class="of">of 1,884</span></div>
+          <div class="figure-meta">Page <strong>52</strong> of 76<br><span style="color:var(--ink-faint)">~9 min remaining</span></div>
+        </div>
+        <div class="progress"><span style="width:68%"></span></div>
+        <div class="progress-meta"><span>68% complete</span><span>2 anonymous · skipped</span></div>
+        <div class="anon-note"><strong>2 leads hidden.</strong> Out-of-network or privacy-restricted profiles your account can't see — not retried.</div>
+        <div class="actions" style="margin-top:16px">
+          <button class="ghost">Pause</button>
+          <button class="ghost" style="border-color:rgba(139,58,46,0.4); color:var(--err)">Stop</button>
+          <a class="ghost" style="text-decoration:none; display:inline-flex; align-items:center" href="#">Open sheet ↗</a>
+        </div>
+      </section>
+      <div class="queue">
+        <div class="qlabel">Queue</div>
+        <ul>
+          <li><span class="num">01</span><div class="info"><div class="nm">VPs Marketing · DACH</div><div class="meta">412 leads · 17m 04s</div></div><span class="chip done"><span class="dot"></span>Done</span></li>
+          <li><span class="num">02</span><div class="info"><div class="nm">CMOs · UK</div><div class="meta">52 / 76 pages · 1,275 leads</div></div><span class="chip running"><span class="dot"></span>Running</span></li>
+          <li><span class="num">03</span><div class="info"><div class="nm">Sales Reps · US Bay</div><div class="meta">Skipped — toggled off</div></div><span class="chip pending"><span class="dot"></span>Skipped</span></li>
+        </ul>
+      </div>
+      <div class="footer-row"><button class="settings-link">Settings ↗</button><span class="version">v3.7.2 · Ortus</span></div>
+    </div>
+  </div>
+
+  <!-- ─── 7. Job complete (more queued) ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 7</span>
+      <span class="name">Job done — moving on</span>
+      <span class="desc">Quick acknowledgment between jobs. The hero updates; queue chips reflow. Auto-advances after a beat.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">Ortus · Job 2 done</div></div></div>
+        <span class="live" data-state="done"><span class="dot"></span>Job done</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero">
+        <span class="eyebrow">Just finished</span>
+        <h2 class="title" style="font-size:22px">CMOs · UK</h2>
+        <p class="sub">14m 22s · 76 pages</p>
+        <div class="figure-row">
+          <div class="figure">1,882<span class="of">of 1,884</span></div>
+          <div class="figure-meta">Pages <strong>76</strong><br>Anonymous <strong>2</strong></div>
+        </div>
+        <div class="anon-note">Wrote 1,882 leads to <strong>Q2 Searches → Scrape — row 3</strong>. Link saved back to source row.</div>
+        <div class="actions" style="margin-top:16px">
+          <button class="cta">Open this sheet<span class="pod">↗</span></button>
+          <span style="font-family:var(--mono); font-size:10px; letter-spacing:0.1em; color:var(--ink-soft); margin-left:auto">Next job in 5s…</span>
+        </div>
+      </section>
+      <div class="queue">
+        <div class="qlabel">Queue</div>
+        <ul>
+          <li><span class="num">01</span><div class="info"><div class="nm">VPs Marketing · DACH</div><div class="meta">412 leads · 17m 04s</div></div><span class="chip done"><span class="dot"></span>Done</span></li>
+          <li><span class="num">02</span><div class="info"><div class="nm">CMOs · UK</div><div class="meta">1,882 leads · 14m 22s · 2 anon</div></div><span class="chip done"><span class="dot"></span>Done</span></li>
+          <li><span class="num">03</span><div class="info"><div class="nm">Sales Reps · US Bay</div><div class="meta">Skipped</div></div><span class="chip pending"><span class="dot"></span>Skipped</span></li>
+        </ul>
+      </div>
+      <div class="footer-row"><button class="settings-link">Settings ↗</button><span class="version">v3.7.2 · Ortus</span></div>
+    </div>
+  </div>
+
+  <!-- ─── 8. All done ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 8</span>
+      <span class="name">All jobs done</span>
+      <span class="desc">Final summary. One serif figure for the total, queue list keeps the per-job breakdown. Sheet link is the dominant action.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">2 of 2 jobs done</div></div></div>
+        <span class="live" data-state="done"><span class="dot"></span>Complete</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero">
+        <span class="eyebrow">All done</span>
+        <h2 class="title" style="font-size:22px">2 jobs<span style="color:var(--ink-faint); font-style:italic"> · 31m 26s</span></h2>
+        <p class="sub">Q2 Searches · Q2 Outreach Master</p>
+        <div class="figure-row">
+          <div class="figure">2,294<span class="of">leads</span></div>
+          <div class="figure-meta">2 anonymous<br>Across 93 pages</div>
+        </div>
+        <div class="anon-note">All write-back links saved to your source sheet. <strong>2 leads couldn't be seen by your account</strong> — they're noted in the run log if you want to check.</div>
+        <div class="actions" style="margin-top:18px">
+          <button class="cta">Open results<span class="pod">↗</span></button>
+          <button class="ghost">Run another batch</button>
+        </div>
+      </section>
+      <div class="queue">
+        <div class="qlabel">Summary</div>
+        <ul>
+          <li><span class="num">01</span><div class="info"><div class="nm">VPs Marketing · DACH</div><div class="meta">412 leads · 0 anon</div></div><span class="chip done"><span class="dot"></span>Done</span></li>
+          <li><span class="num">02</span><div class="info"><div class="nm">CMOs · UK</div><div class="meta">1,882 leads · 2 anon</div></div><span class="chip done"><span class="dot"></span>Done</span></li>
+        </ul>
+      </div>
+      <div class="footer-row"><button class="settings-link">Settings ↗</button><span class="version">v3.7.2 · Ortus</span></div>
+    </div>
+  </div>
+
+  <!-- ─── 9. Settings panel ─── -->
+  <div class="step">
+    <div class="caption">
+      <span class="num">Step 9</span>
+      <span class="name">Settings</span>
+      <span class="desc">Tucked behind the footer link. Corner window and anonymous-lead behavior — kept out of the main flow. Slow mode lives at the top of every screen now, so it isn't here.</span>
+    </div>
+    <div class="popup">
+      <header class="mast">
+        <div class="brand"><span class="mark">O</span><div class="brand-text"><div class="name">Sales Nav Scraper</div><div class="sub">Settings</div></div></div>
+        <span class="live" data-state="standby"><span class="dot"></span>Settings</span>
+      </header>
+      <div class="mode-strip">
+        <span class="label">Mode</span>
+        <button class="toggle-pill" aria-pressed="false"><span class="dot"></span>Slow</button>
+        <span class="hint">For old computers, VMs, GoLogin, or slow Wi-Fi</span>
+      </div>
+      <section class="hero" style="padding-bottom:8px">
+        <span class="eyebrow">Behavior</span>
+        <h2 class="title" style="font-size:21px">Tune for your machine</h2>
+        <p class="sub">Slow mode lives at the top of every screen — these are the rest. Defaults are sensible.</p>
+      </section>
+      <section class="body settings">
+        <div class="row">
+          <div>
+            <div class="label">Corner window</div>
+            <div class="desc">Shrinks the scraping tab into the top-right corner so you can keep working.</div>
+          </div>
+          <div class="switch on"></div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="label">Hide anonymous leads</div>
+            <div class="desc">Out-of-network profiles are skipped and never written. Recommended off only if you have a reason.</div>
+          </div>
+          <div class="switch on"></div>
+        </div>
+      </section>
+      <div class="footer-row"><button class="settings-link">← Back to scrape</button><span class="version">v3.7.2 · Ortus</span></div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

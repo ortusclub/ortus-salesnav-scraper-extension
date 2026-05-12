@@ -25,12 +25,13 @@ button{font:inherit;cursor:pointer;}
 h1,h2,h3,h4,p{margin:0;}
 
 body{
-  width:416px; min-height:200px;
+  width:432px; min-height:220px;
   font-family:var(--sans); font-size:13px; color:var(--ink-2);
   background:linear-gradient(180deg, #ECE5D2 0%, #DCD3BC 100%);
-  padding:8px;
+  padding:10px;
   -webkit-font-smoothing:antialiased;
 }
+*:focus-visible{outline:2px solid var(--gold-deep); outline-offset:2px; border-radius:4px;}
 
 .popup{
   position:relative; min-height:200px;
@@ -52,7 +53,7 @@ body{
 
 /* ─── Masthead ─── */
 .mast{
-  padding:16px 18px 14px;
+  padding:18px 22px 16px;
   display:grid; grid-template-columns:1fr auto;
   align-items:center; gap:10px;
   border-bottom:1px solid var(--rule);
@@ -91,7 +92,7 @@ body{
   padding:3px 9px 3px 7px; border-radius:999px;
   font-family:var(--mono); font-size:9px; letter-spacing:0.12em; text-transform:uppercase; font-weight:600;
 }
-.live[data-state="standby"]{background:transparent; border:1px solid var(--rule-2); color:var(--ink-soft);}
+.live[data-state="standby"]{display:none;}
 .live[data-state="connecting"]{background:var(--paper-2); border:1px solid var(--rule-2); color:var(--ink-soft);}
 .live[data-state="ready"]{background:var(--paper-2); border:1px solid var(--rule-2); color:var(--ink-2);}
 .live[data-state="running"]{background:var(--gold-tint); border:1px solid var(--gold-deep); color:#6F4715;}
@@ -103,17 +104,20 @@ body{
 .live[data-state="connecting"] .dot{animation:pulse 0.8s ease-in-out infinite;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
 
-/* ─── Mode strip ─── */
-.mode-strip{
-  padding:8px 14px 9px;
-  border-bottom:1px solid var(--rule);
-  background:var(--paper-2);
+/* ─── Combined control strip (mode left, slow + hint right) — B-1 layout ─── */
+.control-strip{
+  padding:12px 22px; border-bottom:1px solid var(--rule);
+  background:var(--paper);
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
 }
+.control-strip-right{display:flex; align-items:center; gap:10px;}
+.slow-hint{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.06em;
+  color:var(--ink-faint); white-space:nowrap; line-height:1.3;
+  font-style:italic;
+}
+/* Legacy — kept only for the .toggle-pill family which slow-mode reuses */
 .mode-strip-row{display:flex; align-items:center; gap:10px;}
-.mode-strip .label{
-  font-family:var(--mono); font-size:8.5px; letter-spacing:0.18em; text-transform:uppercase;
-  color:var(--ink-faint);
-}
 .toggle-pill{
   display:inline-flex; align-items:center; gap:6px;
   padding:4px 10px 4px 8px; border-radius:999px;
@@ -144,41 +148,41 @@ body{
 
 /* ─── Eyebrow ─── */
 .eyebrow{
-  display:inline-flex; align-items:center; gap:6px;
-  font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase;
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:0.16em; text-transform:uppercase;
   color:var(--gold-deep);
 }
-.eyebrow::before{content:""; width:16px; height:1px; background:var(--gold-deep);}
+.eyebrow::before{content:""; width:18px; height:1px; background:var(--gold-deep);}
 
 /* ─── Hero ─── */
 .hero{
-  padding:24px 22px 22px;
+  padding:28px 26px 26px;
   border-bottom:1px solid var(--rule);
   background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
 }
 .hero h2.title{
-  font-family:var(--serif); font-weight:500; font-size:24px; line-height:1.1;
-  letter-spacing:-0.02em; color:var(--ink); margin-top:14px;
+  font-family:var(--serif); font-weight:500; font-size:24px; line-height:1.15;
+  letter-spacing:-0.02em; color:var(--ink); margin-top:16px;
 }
 .hero h2.title em{font-style:italic; font-weight:400;}
-.hero .sub{margin-top:12px; color:var(--ink-soft); font-size:12.5px; line-height:1.6;}
+.hero .sub{margin-top:14px; color:var(--ink-soft); font-size:12.5px; line-height:1.65;}
 
-.body{padding:18px 22px 20px;}
+.body{padding:22px 26px 24px;}
 .body+.body{border-top:1px solid var(--rule);}
 .body h3{font-family:var(--serif); font-weight:500; font-size:16px; color:var(--ink); letter-spacing:-0.01em;}
 
 /* ─── Inputs ─── */
 .field-label{
   display:block;
-  font-family:var(--mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase;
-  color:var(--ink-faint); margin:18px 0 8px;
+  font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-soft); margin:22px 0 10px;
 }
 .field-label:first-child{margin-top:0;}
 input[type="url"], input[type="text"], input[type="number"], select{
-  width:100%; height:36px; padding:0 12px;
-  border-radius:6px; border:1px solid var(--rule);
+  width:100%; height:40px; padding:0 14px;
+  border-radius:7px; border:1px solid var(--rule);
   background:var(--paper);
-  font-family:var(--mono); font-size:11px; color:var(--ink-2);
+  font-family:var(--mono); font-size:12px; color:var(--ink-2);
   transition:all 200ms var(--ease);
   -webkit-appearance:none; appearance:none;
 }
@@ -191,8 +195,157 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
 .row-range{display:flex; align-items:center; gap:8px;}
 .row-range input{width:100px; text-align:center;}
 .row-range .sep{color:var(--ink-faint); font-family:var(--mono); font-size:11px; letter-spacing:0.1em;}
-.helper{font-family:var(--mono); font-size:9.5px; letter-spacing:0.04em; color:var(--ink-faint); margin-top:8px; line-height:1.5;}
+.helper{font-family:var(--mono); font-size:9.5px; letter-spacing:0.04em; color:var(--ink-faint); margin-top:10px; line-height:1.6;}
 .helper.warn{color:#6F4715; background:var(--gold-tint); border-radius:6px; padding:8px 11px; border:1px solid rgba(201,144,70,0.35); margin-top:10px;}
+
+/* ─── Alarm banner (loud, full-width) — shown when sheet sharing is OFF ─── */
+.alarm{
+  margin-top:14px; padding:14px 16px;
+  border-radius:10px;
+  background:rgba(139,58,46,0.06);
+  border:1px solid rgba(139,58,46,0.35);
+  border-left:3px solid var(--err);
+  display:grid; grid-template-columns:22px 1fr; gap:12px; align-items:start;
+  animation:alarm-in 280ms var(--ease);
+}
+@keyframes alarm-in{from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);}}
+.alarm .icon{
+  width:22px; height:22px; border-radius:50%;
+  background:var(--err); color:var(--paper);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-weight:600; font-size:14px; line-height:1;
+  flex-shrink:0;
+}
+.alarm .title{
+  font-family:var(--serif); font-weight:500; font-size:14px; color:var(--err); line-height:1.3;
+}
+.alarm .body-text{
+  margin-top:5px; font-size:12px; color:var(--ink-2); line-height:1.55;
+}
+.alarm .body-text strong{color:var(--ink); font-weight:600;}
+.alarm .body-text code{
+  font-family:var(--mono); font-size:10.5px;
+  background:rgba(139,58,46,0.08); color:var(--err);
+  padding:1px 6px; border-radius:4px;
+}
+
+/* ─── Shared-quiet pill (replaces toggle look when status is OK) ─── */
+#toggle-shared-pill[data-state="on"]{
+  background:rgba(79,122,77,0.10); border-color:var(--ok); color:var(--ok);
+}
+#toggle-shared-pill[data-state="on"] .dot{background:var(--ok); box-shadow:0 0 0 2.5px rgba(79,122,77,0.18);}
+#toggle-shared-pill[data-state="on"] .state{color:var(--ok); border-left-color:rgba(79,122,77,0.30);}
+#toggle-shared-pill[data-state="off"]{
+  background:rgba(139,58,46,0.06); border-color:var(--err); color:var(--err);
+}
+#toggle-shared-pill[data-state="off"] .dot{background:var(--err); box-shadow:0 0 0 2.5px rgba(139,58,46,0.20); animation:pulse 1.4s ease-in-out infinite;}
+#toggle-shared-pill[data-state="off"] .state{color:var(--err); border-left-color:rgba(139,58,46,0.35);}
+
+/* ─── Preflight banner (LinkedIn keep-alive pre-launch nudge) ─── */
+.preflight{
+  margin:0 0 14px; padding:12px 14px;
+  border-radius:10px;
+  background:var(--gold-tint);
+  border:1px solid rgba(201,144,70,0.45);
+  border-left:3px solid var(--gold-deep);
+  display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center;
+}
+.preflight .text{font-size:12px; color:#6F4715; line-height:1.55;}
+.preflight .text strong{color:var(--ink); font-weight:600;}
+.preflight .text code{
+  font-family:var(--mono); font-size:10.5px;
+  background:rgba(201,144,70,0.18); color:#5A3812;
+  padding:1px 5px; border-radius:4px;
+}
+.preflight .text .why{
+  display:block; margin-top:4px;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.06em; color:rgba(111,71,21,0.78);
+}
+.preflight .step-1, .preflight .step-2{display:block;}
+.preflight .preflight-copy{
+  display:inline-flex; align-items:center; gap:8px;
+  margin-top:8px; padding:6px 11px;
+  background:var(--paper); border:1px solid var(--rule-2);
+  border-radius:7px; cursor:pointer;
+  transition:all 200ms var(--ease);
+}
+.preflight .preflight-copy:hover{border-color:var(--ink); transform:translateY(-1px);}
+.preflight .preflight-copy code{
+  font-family:var(--mono); font-size:11px; color:var(--ink-2);
+  background:transparent; padding:0;
+}
+.preflight .preflight-copy .copy-hint{
+  font-family:var(--mono); font-size:8.5px; letter-spacing:0.14em;
+  text-transform:uppercase; color:var(--ink-faint);
+  border-left:1px solid var(--rule-2); padding-left:8px;
+}
+.preflight .preflight-copy.copied{background:rgba(79,122,77,0.10); border-color:var(--ok);}
+.preflight .preflight-copy.copied code{color:var(--ok);}
+.preflight .preflight-copy.copied .copy-hint{color:var(--ok); border-left-color:rgba(79,122,77,0.30);}
+.preflight[data-state="confirm"] .preflight-copy{background:var(--paper);}
+.preflight button{
+  background:var(--ink); color:var(--paper); border:0;
+  border-radius:999px; padding:8px 14px; height:34px;
+  font:500 11.5px/1 var(--sans);
+  display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+  cursor:pointer; transition:transform 200ms var(--ease), background 200ms var(--ease);
+}
+.preflight button:hover{background:#000; transform:translateY(-1px);}
+.preflight .preflight-confirm{
+  background:var(--ok); color:var(--paper);
+}
+.preflight .preflight-confirm:hover{background:#3F6A3D;}
+
+/* State machine: initial = step 1 visible / confirm = step 2 visible */
+.preflight[data-state="initial"] .step-2,
+.preflight[data-state="initial"] .preflight-confirm{display:none;}
+.preflight[data-state="confirm"] .step-1,
+.preflight[data-state="confirm"] .preflight-open{display:none;}
+.preflight[data-state="confirm"]{
+  background:rgba(79,122,77,0.06);
+  border-color:rgba(79,122,77,0.35);
+  border-left-color:var(--ok);
+}
+.preflight[data-state="confirm"] .text{color:#3F6A3D;}
+.preflight[data-state="confirm"] .text strong{color:var(--ok);}
+.preflight[data-state="confirm"] .text .why{color:rgba(79,122,77,0.7);}
+
+/* ─── Dedup toggle (above Start CTAs on launch views) ─── */
+.dedup-toggle{
+  margin:0 0 14px; padding:12px 14px;
+  border-radius:10px;
+  background:var(--paper-2); border:1px solid var(--rule);
+  display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center;
+}
+.dedup-toggle .switch{
+  width:36px; height:20px; border-radius:999px; background:var(--rule-2); position:relative;
+  cursor:pointer; flex-shrink:0; transition:background 200ms var(--ease);
+  appearance:none; border:0;
+}
+.dedup-toggle .switch.on{background:var(--ok);}
+.dedup-toggle .switch::after{
+  content:""; position:absolute; top:2px; left:2px; width:16px; height:16px;
+  border-radius:50%; background:var(--paper); transition:left 200ms var(--ease);
+}
+.dedup-toggle .switch.on::after{left:18px;}
+.dedup-toggle .label{
+  font-family:var(--sans); font-size:12.5px; color:var(--ink-2); line-height:1.4;
+}
+.dedup-toggle .label strong{color:var(--ink); font-weight:600;}
+.dedup-toggle .count{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:0.04em;
+  color:var(--ink-faint); white-space:nowrap;
+}
+.dedup-toggle.off{background:rgba(139,58,46,0.04); border-color:rgba(139,58,46,0.25);}
+.dedup-toggle.off .label{color:var(--err);}
+.dedup-toggle.off .label strong{color:var(--err);}
+.dedup-note{
+  margin:0 0 14px; padding:11px 14px;
+  border-radius:10px;
+  background:var(--paper-2); border:1px solid var(--rule);
+  font-family:var(--sans); font-size:12px; color:var(--ink-soft); line-height:1.5;
+  font-style:italic;
+}
 
 /* ─── Buttons ─── */
 .cta{
@@ -369,7 +522,7 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
 
 /* ─── Footer ─── */
 .footer-row{
-  padding:10px 18px 14px; border-top:1px solid var(--rule);
+  padding:12px 22px 16px; border-top:1px solid var(--rule);
   display:flex; align-items:center; justify-content:space-between; background:var(--paper-2);
 }
 .footer-row .settings-link{
@@ -379,10 +532,195 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
 .footer-row .settings-link:hover{color:var(--ink);}
 .footer-row .version{font-family:var(--mono); font-size:9px; letter-spacing:0.08em; color:var(--ink-faint);}
 
+/* ─── Mode segmented control (used inside .control-strip) ─── */
+.mode-seg{
+  display:inline-flex; padding:3px; border-radius:999px;
+  background:var(--paper-2); border:1px solid var(--rule-2);
+}
+.mode-seg button{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  padding:7px 18px; border-radius:999px; min-height:34px;
+  font-family:var(--sans); font-size:12px; font-weight:500; color:var(--ink-soft);
+  display:inline-flex; align-items:center; gap:7px;
+  transition:all 220ms var(--ease);
+}
+.mode-seg button:hover:not([aria-pressed="true"]){color:var(--ink);}
+.mode-seg button[aria-pressed="true"]{background:var(--ink); color:var(--paper);}
+.mode-seg button .ic{font-size:11px;}
+
+/* ─── Radio cards (replaces sel-tab-source dropdown) ─── */
+.radio-stack{display:grid; gap:10px; margin-top:6px;}
+/* Reveal sections under the radio-stack get explicit padding-top so they
+   never collapse against the last radio card — fixes cramped feel. */
+#field-fixed-tab, #field-tab-col{padding-top:18px;}
+#field-tab-col .col-list{margin-top:10px;}
+.radio-card{
+  display:grid; grid-template-columns:18px 1fr auto; align-items:start; gap:12px;
+  padding:15px 14px; border-radius:10px;
+  border:1px solid var(--rule); background:var(--paper);
+  cursor:pointer; text-align:left; min-height:44px;
+  font-family:var(--sans);
+  transition:border-color 200ms var(--ease), background 200ms var(--ease);
+}
+.radio-card:hover{border-color:var(--ink-soft);}
+.radio-card[aria-checked="true"]{
+  border-color:var(--ink);
+  background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.radio-card .ring{
+  width:18px; height:18px; border-radius:50%;
+  border:1.5px solid var(--rule-2);
+  display:inline-flex; align-items:center; justify-content:center;
+  flex-shrink:0; margin-top:2px;
+  transition:border-color 200ms var(--ease);
+}
+.radio-card[aria-checked="true"] .ring{border-color:var(--ink);}
+.radio-card[aria-checked="true"] .ring::after{content:""; width:8px; height:8px; border-radius:50%; background:var(--ink);}
+.radio-card .h{font-family:var(--serif); font-weight:600; font-size:16px; color:var(--ink); line-height:1.25; display:block; letter-spacing:-0.005em;}
+.radio-card .d{font-size:12.5px; color:var(--ink-soft); margin-top:5px; line-height:1.55; display:block; font-weight:400;}
+.radio-card .ex{
+  font-family:var(--mono); font-size:10px; color:var(--ink-faint);
+  background:var(--paper-2); padding:4px 10px; border-radius:5px;
+  white-space:nowrap; align-self:start; margin-top:3px;
+}
+
+/* ─── Column-picker listbox (replaces sel-url-col / sel-tab-col / sel-output-col) ─── */
+.col-list{
+  list-style:none; padding:0; margin:8px 0 0;
+  border:1px solid var(--rule); border-radius:8px; overflow:hidden;
+  background:var(--paper);
+  max-height:240px; overflow-y:auto;
+}
+.col-list li{
+  display:grid; grid-template-columns:36px 1fr auto; align-items:center; gap:12px;
+  padding:11px 14px; border-bottom:1px solid var(--rule);
+  cursor:pointer; min-height:44px;
+  transition:background 150ms var(--ease);
+}
+.col-list li:last-child{border-bottom:0;}
+.col-list li:hover{background:var(--paper-2);}
+.col-list li[aria-selected="true"]{background:var(--paper-2); box-shadow:inset 3px 0 0 var(--ink);}
+.col-list li .col{
+  font-family:var(--mono); font-size:12px; color:var(--ink-faint);
+  font-weight:600; letter-spacing:0.04em;
+}
+.col-list li[aria-selected="true"] .col{color:var(--ink);}
+.col-list li .nm{
+  font-family:var(--serif); font-weight:600; font-size:15px; color:var(--ink);
+  letter-spacing:-0.005em;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.col-list li .preview{
+  font-family:var(--mono); font-size:10.5px; color:var(--ink-faint);
+  max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.col-list-search{
+  width:100%; height:36px; padding:0 12px;
+  border:1px solid var(--rule); border-bottom:0;
+  background:var(--paper-2); font-family:var(--sans); font-size:12px;
+  border-radius:8px 8px 0 0;
+}
+.col-list-search:focus{outline:none; box-shadow:inset 0 0 0 2px var(--gold-deep);}
+.col-list.with-search{border-radius:0 0 8px 8px; border-top:0;}
+.col-list-empty{
+  padding:18px 14px; font-family:var(--mono); font-size:11px; color:var(--ink-faint);
+  text-align:center;
+}
+
+/* ─── Resume card (replaces stat-strip + Resume/Start fresh) ─── */
+.resume-card{
+  border:1px solid var(--rule); border-radius:12px; padding:18px 20px;
+  background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+  margin-top:14px;
+}
+.resume-card .where{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--gold-deep); margin-bottom:12px;
+}
+.resume-card .stats{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;
+}
+.resume-card .stat-mini{
+  padding:10px 12px; background:var(--paper); border-radius:8px; border:1px solid var(--rule);
+}
+.resume-card .stat-mini .v{
+  font-family:var(--serif); font-weight:500; font-size:18px; color:var(--ink);
+  line-height:1; letter-spacing:-0.015em;
+}
+.resume-card .stat-mini .l{
+  font-family:var(--mono); font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-faint); margin-top:4px;
+}
+.cta-resume{
+  display:inline-flex; align-items:center; gap:12px;
+  width:100%; min-height:60px;
+  background:var(--ink); color:var(--paper); border:0;
+  border-radius:12px; padding:14px 18px;
+  cursor:pointer; text-align:left;
+  box-shadow:0 8px 18px -10px rgba(20,15,5,0.5);
+  font-family:var(--sans);
+  transition:transform 240ms var(--ease), background 240ms var(--ease);
+}
+.cta-resume:hover{transform:translateY(-1px); background:#000;}
+.cta-resume:active{transform:translateY(0) scale(0.99);}
+.cta-resume .pod{
+  width:36px; height:36px; border-radius:50%;
+  background:var(--gold); color:var(--ink);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:15px; flex-shrink:0;
+}
+.cta-resume .stack{display:flex; flex-direction:column; gap:3px; min-width:0;}
+.cta-resume .stack .h{font:500 13px/1.2 var(--sans);}
+.cta-resume .stack .d{font:400 11px/1.35 var(--sans); color:rgba(253,251,247,0.7);}
+.danger-link{
+  appearance:none; background:transparent; border:0; padding:10px 0;
+  font:500 12px var(--sans); color:var(--err);
+  cursor:pointer; text-decoration:underline; text-underline-offset:3px;
+}
+.danger-link:hover{color:#6B2820;}
+
+/* ─── Mid-run cluster + Stop confirmation ─── */
+.run-cluster{
+  display:grid; grid-template-columns:1fr auto; gap:12px;
+  align-items:center; margin-top:18px; padding:12px;
+  background:var(--paper-2); border-radius:10px; border:1px solid var(--rule);
+}
+.run-cluster .left{display:flex; gap:8px; flex-wrap:wrap;}
+.run-cluster .stop-area{display:flex; align-items:center; gap:10px;}
+.confirm-strip{
+  display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center;
+  margin-top:10px; padding:10px 12px;
+  background:var(--paper); border-radius:8px;
+  border:1px solid var(--err); border-left:3px solid var(--err);
+  font-size:11.5px; color:var(--err); line-height:1.5;
+  animation:alarm-in 220ms var(--ease);
+}
+.confirm-strip .ic{font-size:14px;}
+.confirm-strip strong{color:var(--ink); font-weight:600;}
+.confirm-strip .confirm-actions{display:flex; gap:6px;}
+
+/* ─── 44px touch-target adjustments on existing ghost buttons ─── */
+.ghost{min-height:36px;}
+.ghost.sm{min-height:32px;}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:0.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:0.01ms !important;
+  }
+  .live[data-state="running"] .dot,
+  .live[data-state="connecting"] .dot,
+  #toggle-shared-pill[data-state="off"] .dot,
+  .toggle-pill[data-state="checking"] .dot,
+  .chip.running .dot{animation:none !important;}
+}
+
 /* ─── Settings ─── */
 .settings .row{
-  display:grid; grid-template-columns:1fr auto; gap:16px;
-  align-items:center; padding:13px 0; border-bottom:1px solid var(--rule);
+  display:grid; grid-template-columns:1fr auto; gap:18px;
+  align-items:center; padding:16px 0; border-bottom:1px solid var(--rule);
 }
 .settings .row:last-child{border-bottom:0;}
 .settings .row .label{font-family:var(--serif); font-weight:500; font-size:14px; color:var(--ink);}
@@ -469,9 +807,255 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
   text-decoration:none; display:block;
 }
 .sheet-link:hover{color:var(--ink); background:var(--paper);}
+
+/* ─── Help system: first-run overlay + coachmark pills ─── */
+.help-overlay{
+  position:fixed; inset:0;
+  background:rgba(22,20,15,0.62);
+  z-index:1000;
+  display:flex; align-items:center; justify-content:center;
+  padding:14px;
+  opacity:0; pointer-events:none;
+  transition:opacity 200ms var(--ease);
+}
+.help-overlay[data-open="true"]{ opacity:1; pointer-events:auto; }
+.help-card{
+  position:relative;
+  width:100%; max-width:380px;
+  background:var(--paper);
+  border-radius:14px;
+  padding:20px 22px 14px;
+  box-shadow:0 18px 56px -18px rgba(0,0,0,0.55), 0 0 0 1px rgba(60,40,10,0.08);
+}
+.help-card .step-pill{
+  display:inline-block;
+  font-family:var(--mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-faint);
+  margin-bottom:10px;
+}
+.help-slide{ display:none; }
+.help-slide[data-active="true"]{ display:block; }
+.help-slide h3{
+  font-family:var(--serif); font-weight:500; font-size:22px; line-height:1.18;
+  color:var(--ink); margin:0 0 10px; letter-spacing:-0.01em;
+}
+.help-slide h3 em{ font-style:italic; color:var(--gold-deep); }
+.help-slide p{
+  font-size:13px; line-height:1.55; color:var(--ink-soft); margin:0 0 10px;
+}
+.help-slide p strong{ color:var(--ink); }
+.help-illust{
+  background:var(--paper-2); border-radius:10px;
+  padding:18px 14px; text-align:center;
+  margin:12px 0 10px;
+  border:1px dashed var(--rule-2);
+}
+.help-illust .big{ font-size:30px; line-height:1; margin-bottom:6px; }
+.help-illust .cap{
+  font-family:var(--mono); font-size:10px; letter-spacing:0.06em;
+  color:var(--ink-soft); line-height:1.55;
+}
+.help-cta-row{ margin-top:8px; }
+.help-cta-row .cta-fresh{
+  display:block; width:100%;
+  background:var(--ink); color:var(--paper); border:none;
+  padding:11px 14px; border-radius:8px;
+  font-weight:600; font-size:13px;
+  font-family:var(--sans); cursor:pointer;
+}
+.help-cta-row .cta-fresh:hover{ background:var(--ink-2); }
+.help-pips{
+  display:flex; gap:5px; justify-content:center; margin:14px 0 10px;
+}
+.help-pips span{
+  width:6px; height:6px; border-radius:50%; background:var(--rule-2);
+  transition:background 150ms;
+}
+.help-pips span[data-on="true"]{ background:var(--ink); }
+.help-nav{
+  display:flex; align-items:center; gap:8px;
+}
+.help-nav .skip-link{
+  background:none; border:none; color:var(--ink-faint);
+  font-size:9.5px; font-family:var(--mono); letter-spacing:0.12em; text-transform:uppercase;
+  cursor:pointer; padding:6px 8px;
+  text-decoration:underline; text-underline-offset:3px;
+}
+.help-nav .skip-link:hover{ color:var(--ink-soft); }
+.help-nav .spacer{ flex:1; }
+.help-nav .nav-btn{
+  padding:8px 14px; border-radius:8px;
+  font-family:var(--sans); font-size:13px; font-weight:600;
+  border:1px solid var(--rule-2); background:var(--paper); color:var(--ink-2);
+  cursor:pointer;
+}
+.help-nav .nav-btn[data-primary="true"]{
+  background:var(--ink); color:var(--paper); border-color:var(--ink);
+}
+.help-nav .nav-btn:disabled{ opacity:0.35; cursor:default; }
+
+/* Coachmark "?" pills next to input fields */
+.field-with-pill{ position:relative; }
+.help-pill{
+  position:absolute;
+  top:-9px; right:-7px;
+  width:20px; height:20px;
+  border-radius:50%;
+  background:var(--gold-warm); color:var(--ink);
+  border:2px solid var(--paper);
+  font-family:var(--sans); font-weight:700; font-size:11px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; padding:0;
+  box-shadow:0 0 0 1px var(--gold-deep);
+  z-index:5;
+}
+.help-pill:hover{ background:var(--gold-deep); color:var(--paper); }
+.help-pill[data-pulsing="true"]{
+  animation:pillPulse 1.7s ease-in-out infinite;
+}
+@keyframes pillPulse{
+  0%, 100%{ box-shadow:0 0 0 1px var(--gold-deep), 0 0 0 0 rgba(201,144,70,0.55); }
+  50%{ box-shadow:0 0 0 1px var(--gold-deep), 0 0 0 8px rgba(201,144,70,0); }
+}
+.help-bubble{
+  position:fixed;
+  top:0; left:0;
+  width:300px;
+  max-width:calc(100vw - 20px);
+  background:var(--paper);
+  border-radius:10px;
+  padding:14px 14px 12px;
+  box-shadow:0 16px 38px -12px rgba(0,0,0,0.32), 0 0 0 1px rgba(60,40,10,0.1);
+  z-index:500;
+  display:none;
+}
+.help-bubble[data-open="true"]{ display:block; }
+.help-bubble::before{
+  content:""; position:absolute;
+  top:-7px; right:14px;
+  width:12px; height:12px;
+  background:var(--paper);
+  transform:rotate(45deg);
+  box-shadow:-1px -1px 0 0 rgba(60,40,10,0.1);
+}
+.help-bubble[data-arrow="bottom"]::before{
+  top:auto; bottom:-7px;
+  box-shadow:1px 1px 0 0 rgba(60,40,10,0.1);
+}
+.help-bubble h4{
+  font-family:var(--serif); font-weight:500; font-size:15px;
+  margin:0 0 6px; color:var(--ink);
+}
+.help-bubble p{
+  font-size:12px; line-height:1.5; color:var(--ink-soft); margin:0 0 8px;
+}
+.help-bubble p strong{ color:var(--ink); }
+.help-bubble .escape{
+  background:var(--gold-tint); border-left:3px solid var(--gold-deep);
+  padding:8px 10px; border-radius:4px; margin:6px 0 8px;
+  font-size:11.5px; line-height:1.5; color:var(--ink-2);
+}
+.help-bubble .escape strong{ color:var(--gold-deep); }
+.help-bubble .fresh-btn{
+  display:block; width:100%; margin-top:4px;
+  background:var(--ink); color:var(--paper); border:none;
+  padding:8px 12px; border-radius:6px;
+  font-size:12px; font-weight:600; font-family:var(--sans);
+  text-align:center; cursor:pointer;
+}
+.help-bubble .fresh-btn:hover{ background:var(--ink-2); }
+.help-bubble .close-x{
+  position:absolute; top:6px; right:8px;
+  background:none; border:none; padding:4px 6px;
+  font-size:14px; color:var(--ink-faint); cursor:pointer; line-height:1;
+}
+.help-bubble .close-x:hover{ color:var(--ink); }
+
+/* Replay-tour link in masthead */
+.mast .replay-tour{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-soft); text-decoration:none;
+  padding:4px 8px; border:1px solid var(--rule-2); border-radius:999px;
+  background:transparent; cursor:pointer;
+}
+.mast .replay-tour:hover{ border-color:var(--ink); color:var(--ink); }
 </style>
 </head>
 <body>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     FIRST-RUN HELP OVERLAY — shows once on install; replayable from masthead
+     ════════════════════════════════════════════════════════════════════ -->
+<div class="help-overlay" id="help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-active-title">
+  <div class="help-card">
+
+    <span class="step-pill" id="help-step-pill">Step 1 of 4</span>
+
+    <div class="help-slide" data-active="true" data-slide="1">
+      <h3 id="help-slide-1-title">Welcome. <em>30 seconds and you're ready.</em></h3>
+      <p>Quick tour so you don't get stuck on the sheet-sharing thing like everyone else does.</p>
+      <div class="help-illust">
+        <div class="big">👋</div>
+        <div class="cap">3 things to know before your first scrape.</div>
+      </div>
+    </div>
+
+    <div class="help-slide" data-slide="2">
+      <h3>Use a <em>brand-new throwaway</em> sheet.</h3>
+      <p><strong>Do NOT</strong> point this tool at your master Internal sheet. Make a blank one just for scraping. Then copy the rows you want into your real sheet when you're done.</p>
+      <div class="help-illust">
+        <div class="big">📄 ➜ 🆕</div>
+        <div class="cap">Your real Internal sheet never gets touched.<br>The throwaway does all the dirty work.</div>
+      </div>
+      <div class="help-cta-row">
+        <button class="cta-fresh" type="button" data-action="open-fresh-sheet">Open a fresh blank sheet ↗</button>
+      </div>
+    </div>
+
+    <div class="help-slide" data-slide="3">
+      <h3>Share it: <em>Anyone with link · Editor</em>.</h3>
+      <p>In your fresh sheet: <strong>Share</strong> → <strong>General access</strong> → <strong>Anyone with the link</strong> → role <strong>Editor</strong>. Without this we can't write the results back.</p>
+      <div class="help-illust">
+        <div class="big">🔗 ✏️</div>
+        <div class="cap">Anyone with the link · Editor<br>(it's a throwaway — totally safe)</div>
+      </div>
+    </div>
+
+    <div class="help-slide" data-slide="4">
+      <h3>Paste a search URL. <em>Start.</em></h3>
+      <p>A <strong>Sales Nav search</strong> URL with your filters baked in — not a profile URL. Paste it, hit Start, and we'll walk every page for you.</p>
+      <div class="help-illust">
+        <div class="big">✅</div>
+        <div class="cap">That's the whole tour. You're ready.</div>
+      </div>
+    </div>
+
+    <div class="help-pips" aria-hidden="true">
+      <span data-on="true"></span>
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+
+    <div class="help-nav">
+      <button class="skip-link" id="help-skip" type="button">Skip tour</button>
+      <div class="spacer"></div>
+      <button class="nav-btn" id="help-back" type="button" disabled>← Back</button>
+      <button class="nav-btn" id="help-next" type="button" data-primary="true">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Coachmark bubble (shared, positioned dynamically next to the clicked pill) -->
+<div class="help-bubble" id="help-bubble" role="dialog" aria-labelledby="help-bubble-title">
+  <button class="close-x" type="button" id="help-bubble-close" aria-label="Close">×</button>
+  <h4 id="help-bubble-title">This sheet needs to be shared</h4>
+  <p id="help-bubble-body">Set it to <strong>Anyone with link · Editor</strong> so this tool can read &amp; write to it.</p>
+  <div class="escape">
+    <strong>Don't want to share your real sheet?</strong> Make a brand-new blank one just for scraping. Copy rows out when done — your Internal sheet stays private.
+  </div>
+  <button class="fresh-btn" type="button" data-action="open-fresh-sheet">Open a fresh blank sheet ↗</button>
+</div>
 
 <div class="popup">
 
@@ -492,18 +1076,26 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
       </div>
     </div>
     <div class="right-actions">
+      <button id="btn-replay-tour" class="replay-tour" type="button" title="Show the help tour again">? Tour</button>
       <button id="btn-float-mini" class="logs-link" type="button" title="Open floating status window — keeps the scrape ticking faster" style="background:transparent;cursor:pointer;">↗ Float</button>
       <span id="live-badge" class="live" data-state="standby"><span class="dot"></span><span id="live-label">Standby</span></span>
     </div>
   </header>
 
-  <div class="mode-strip">
-    <div class="mode-strip-row">
-      <span class="label">Mode</span>
-      <button class="toggle-pill" id="toggle-slow-mode-pill" aria-pressed="false" type="button">
+  <div class="control-strip">
+    <div class="mode-seg" role="tablist" aria-label="Scrape mode">
+      <button id="mode-single" type="button" role="tab" aria-pressed="false" aria-controls="view-single-ready view-single-wrong">
+        <span class="ic" aria-hidden="true">⚡</span>Single
+      </button>
+      <button id="mode-batch" type="button" role="tab" aria-pressed="true" aria-controls="view-batch-setup">
+        <span class="ic" aria-hidden="true">▦</span>Batch
+      </button>
+    </div>
+    <div class="control-strip-right">
+      <button class="toggle-pill" id="toggle-slow-mode-pill" aria-pressed="false" type="button" aria-describedby="slow-hint">
         <span class="dot"></span>Slow<span class="state" id="slow-state-label">Off</span>
       </button>
-      <span class="hint hint-inline">(Old PC, VMs)</span>
+      <span class="slow-hint" id="slow-hint">old PC<br>or VM</span>
     </div>
   </div>
 
@@ -516,11 +1108,25 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
        ════════════════════════════════════════════════════════════════════ -->
   <section id="view-single-wrong" class="hidden">
     <div class="hero">
-      <span class="eyebrow">No search detected</span>
-      <h2 class="title" style="font-size:21px">Open Sales Navigator first</h2>
-      <p class="sub">Run a search on <a href="https://www.linkedin.com/sales/search/people" target="_blank" style="color:var(--gold-deep); text-decoration:underline; text-underline-offset:3px;">linkedin.com/sales/search/people</a>, then click the extension again — or use a sheet of URLs.</p>
+      <h2 class="title" style="font-size:22px">Paste a Sales Nav link.</h2>
+      <p class="sub">Drop in any <code style="font-family:var(--mono); font-size:11px; background:var(--paper-2); padding:1px 6px; border-radius:4px;">linkedin.com/sales/search/people</code> URL with your filters baked in. We'll open it in a fresh tab and run through every page.</p>
+      <label class="field-label" for="input-paste-salesnav">Sales Nav search URL</label>
+      <input type="text" id="input-paste-salesnav" placeholder="https://www.linkedin.com/sales/search/people?…">
+      <label class="field-label" for="input-paste-sheet-url">Result sheet</label>
+      <div class="field-with-pill">
+        <input type="text" id="input-paste-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/…">
+        <button class="help-pill" type="button" data-help="sheet" data-help-context="write" aria-label="Help with sheet sharing">?</button>
+      </div>
+      <label class="field-label" for="input-paste-sheet-name">Tab name</label>
+      <input type="text" id="input-paste-sheet-name" placeholder="Sales Nav Scrape">
+      <div class="dedup-toggle hidden" id="dedup-toggle-paste" role="group" aria-label="Skip already-scraped leads">
+        <button class="switch on" id="dedup-switch-paste" type="button" aria-pressed="true" aria-label="Skip leads already in this sheet"></button>
+        <span class="label" id="dedup-label-paste"><strong>Skip leads already in this sheet</strong></span>
+        <span class="count" id="dedup-count-paste"></span>
+      </div>
+      <div class="dedup-note hidden" id="dedup-note-paste"></div>
       <div class="actions" style="margin-top:22px">
-        <button class="ghost" id="btn-back-to-welcome" type="button">← Use a sheet of URLs</button>
+        <button class="cta" id="btn-paste-start" type="button">Open and scrape<span class="pod">▶</span></button>
       </div>
     </div>
   </section>
@@ -538,10 +1144,31 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
         <div class="stat"><div class="v">25</div><div class="l">per page</div></div>
       </div>
       <label class="field-label" for="input-sheet-url">Result sheet</label>
-      <input type="text" id="input-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/…">
+      <div class="field-with-pill">
+        <input type="text" id="input-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/…">
+        <button class="help-pill" type="button" data-help="sheet" data-help-context="write" aria-label="Help with sheet sharing">?</button>
+      </div>
       <label class="field-label" for="input-sheet-name">Tab name</label>
       <input type="text" id="input-sheet-name" placeholder="Sales Nav Scrape">
-      <div class="actions" style="margin-top:20px">
+      <div class="preflight preflight-memsaver hidden" data-state="initial" data-preflight-for="single-ready">
+        <div class="text">
+          <span class="step-1"><strong>One-time setup:</strong> add <code>www.linkedin.com</code> to Chrome's <em>Always keep these sites active</em> list so this scrape can't be frozen.</span>
+          <span class="step-2"><strong>Did you add it?</strong> Confirm and we'll never nag again.</span>
+          <button class="preflight-copy" type="button" data-copy="www.linkedin.com" aria-label="Copy www.linkedin.com to clipboard">
+            <code>www.linkedin.com</code><span class="copy-hint">Copy</span>
+          </button>
+          <span class="why">chrome://settings/performance → Always keep these sites active → Add</span>
+        </div>
+        <button class="preflight-open" type="button" aria-label="Open Chrome performance settings">Open settings ↗</button>
+        <button class="preflight-confirm" type="button" aria-label="Confirm linkedin.com is on the always-active list">Yes, I added it ✓</button>
+      </div>
+      <div class="dedup-toggle hidden" id="dedup-toggle-single" role="group" aria-label="Skip already-scraped leads">
+        <button class="switch on" id="dedup-switch-single" type="button" aria-pressed="true" aria-label="Skip leads already in this sheet"></button>
+        <span class="label" id="dedup-label-single"><strong>Skip leads already in this sheet</strong></span>
+        <span class="count" id="dedup-count-single"></span>
+      </div>
+      <div class="dedup-note hidden" id="dedup-note-single"></div>
+      <div class="actions" style="margin-top:22px">
         <button class="cta" id="btn-start" type="button">Start scrape<span class="pod">▶</span></button>
         <button class="ghost" id="btn-go-batch" type="button">Use a sheet of URLs</button>
       </div>
@@ -559,6 +1186,10 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
         <div class="figure-meta">
           Page <strong id="prog-page">0/0</strong><br>
           <span style="color:var(--ink-faint)" id="prog-eta">Estimating…</span>
+        </div>
+        <div class="figure-meta" id="prog-skipped-row" style="display:none; margin-top:6px;">
+          <span style="color:var(--ok); font-weight:600;" id="prog-skipped-count">0</span>
+          <span style="color:var(--ink-faint);"> already-scraped skipped</span>
         </div>
       </div>
       <div class="progress"><span id="prog-fill" style="width:0%"></span></div>
@@ -583,6 +1214,7 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
           Pages <strong id="done-pages">0</strong><br>
           Time <strong id="done-time">0s</strong><br>
           Errors <strong id="done-errors">0</strong>
+          <span id="done-skipped-row" style="display:none;"><br>Skipped <strong id="done-skipped-count">0</strong></span>
         </div>
       </div>
       <div class="actions" style="margin-top:20px">
@@ -598,18 +1230,49 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
        ════════════════════════════════════════════════════════════════════ -->
   <section id="view-single-interrupted" class="hidden">
     <div class="hero">
-      <span class="eyebrow">Interrupted</span>
-      <h2 class="title" style="font-size:21px"><span id="interrupted-msg">Scraping was interrupted</span></h2>
-      <p class="sub">You can resume from where it left off, or start fresh.</p>
-      <div class="stat-strip">
-        <div class="stat"><div class="v" id="int-profiles">0</div><div class="l">Saved</div></div>
-        <div class="stat"><div class="v" id="int-page">0/0</div><div class="l">Last page</div></div>
-        <div class="stat"><div class="v">—</div><div class="l">leads</div></div>
+      <span class="eyebrow">Picked up after a stop</span>
+      <h2 class="title" style="font-size:22px">Your run paused at <em>page <span id="int-page-prom">—</span></em>.</h2>
+      <p class="sub"><span id="int-saved-prose">No leads</span> already safely written to your sheet. Pick up where it stopped, or throw it all away.</p>
+      <div class="resume-card">
+        <div class="where">Continue from</div>
+        <div class="stats">
+          <div class="stat-mini"><div class="v" id="int-next-page">—</div><div class="l">next page</div></div>
+          <div class="stat-mini"><div class="v" id="int-profiles">0</div><div class="l">already saved</div></div>
+          <div class="stat-mini"><div class="v" id="int-remaining">—</div><div class="l">remaining</div></div>
+        </div>
+        <button class="cta-resume" id="btn-resume" type="button">
+          <span class="pod" aria-hidden="true">▶</span>
+          <span class="stack">
+            <span class="h" id="int-cta-h">Keep going from page —</span>
+            <span class="d" id="int-cta-d">— leads safe</span>
+          </span>
+        </button>
       </div>
-      <div class="actions" style="margin-top:20px">
-        <button class="cta" id="btn-resume" type="button">Resume<span class="pod">▶</span></button>
-        <button class="ghost" id="btn-discard" type="button">Start fresh</button>
+      <div class="preflight preflight-memsaver hidden" data-state="initial" data-preflight-for="single-interrupted" style="margin-top:14px">
+        <div class="text">
+          <span class="step-1"><strong>Before resuming:</strong> add <code>www.linkedin.com</code> to Chrome's <em>Always keep these sites active</em> list so the tab can't be frozen again.</span>
+          <span class="step-2"><strong>Did you add it?</strong> Confirm and we'll never nag again.</span>
+          <button class="preflight-copy" type="button" data-copy="www.linkedin.com" aria-label="Copy www.linkedin.com to clipboard">
+            <code>www.linkedin.com</code><span class="copy-hint">Copy</span>
+          </button>
+          <span class="why">chrome://settings/performance → Always keep these sites active → Add</span>
+        </div>
+        <button class="preflight-open" type="button" aria-label="Open Chrome performance settings">Open settings ↗</button>
+        <button class="preflight-confirm" type="button" aria-label="Confirm linkedin.com is on the always-active list">Yes, I added it ✓</button>
       </div>
+      <div class="actions" style="margin-top:14px; justify-content:flex-end;">
+        <button class="danger-link" id="btn-discard" type="button">Throw away this run and start over</button>
+      </div>
+      <div class="confirm-strip hidden" id="confirm-discard-single" role="alertdialog" aria-labelledby="confirm-discard-single-msg">
+        <span class="ic" aria-hidden="true">⚠</span>
+        <span id="confirm-discard-single-msg"><strong>This deletes the saved progress.</strong> The leads already written to your sheet stay there.</span>
+        <span class="confirm-actions">
+          <button class="ghost sm" id="btn-cancel-discard-single" type="button">Cancel</button>
+          <button class="ghost danger sm" id="btn-confirm-discard-single" type="button">Throw it away</button>
+        </span>
+      </div>
+      <input type="hidden" id="interrupted-msg" value="Stopped">
+      <input type="hidden" id="int-page" value="0/0">
     </div>
   </section>
 
@@ -623,20 +1286,30 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
       <span class="step"><span class="num">3</span>Run</span>
     </div>
     <div class="hero">
-      <span class="eyebrow">Step 1 · Source sheet</span>
-      <h2 class="title">Paste a sheet.<br><em>Get the leads.</em></h2>
-      <p class="sub">A Google Sheet with one Sales Nav search URL per row. We'll batch them and write a results-link back into the source sheet.</p>
-      <div style="display:flex; align-items:center; justify-content:space-between; margin:18px 0 8px;">
-        <label class="field-label" for="input-src-sheet" style="margin:0;">Source sheet URL</label>
-        <button class="toggle-pill" id="toggle-shared-pill" aria-pressed="false" type="button" title="Sharing status — auto-detected">
+      <h2 class="title">Paste a sheet.</h2>
+      <p class="sub">One Sales Nav search URL per row. We'll batch them and write the result link back.</p>
+      <div style="display:flex; align-items:center; justify-content:flex-end; margin:22px 0 10px; gap:10px;">
+        <span class="toggle-pill" id="toggle-shared-pill" aria-pressed="false" role="status" aria-live="polite" title="Sharing status — auto-detected">
           <span class="dot"></span>Shared<span class="state" id="shared-state-label">—</span>
-        </button>
+        </span>
       </div>
-      <input type="text" id="input-src-sheet" placeholder="https://docs.google.com/spreadsheets/d/…">
-      <div class="actions" style="margin-top:18px">
+      <div class="field-with-pill">
+        <input type="text" id="input-src-sheet" placeholder="https://docs.google.com/spreadsheets/d/…" aria-describedby="alarm-share">
+        <button class="help-pill" type="button" data-help="sheet" data-help-context="read-write" aria-label="Help with sheet sharing">?</button>
+      </div>
+      <div class="alarm hidden" id="alarm-share" role="alert">
+        <span class="icon" aria-hidden="true">!</span>
+        <div>
+          <div class="title">This sheet isn't shared</div>
+          <div class="body-text">
+            Open the sheet in Google Sheets, click <strong>Share</strong> (top right), and switch <strong>General access</strong> to <code>Anyone with the link · Editor</code>. Then come back — we'll re-check automatically.
+          </div>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:20px">
         <button class="cta" id="btn-connect-sheet" type="button">Connect<span class="pod">→</span></button>
-        <button class="ghost hidden" id="btn-go-single-link" type="button">Or scrape this Sales Nav tab</button>
       </div>
+      <button id="btn-go-single-link" type="button" hidden></button>
     </div>
   </section>
 
@@ -650,7 +1323,6 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
       <span class="step"><span class="num">3</span>Run</span>
     </div>
     <div class="hero">
-      <span class="eyebrow">Step 2 · Pick a tab</span>
       <h2 class="title" style="font-size:21px"><span id="sheet-title">Connected</span></h2>
       <label class="field-label" for="sel-src-tab">Tab</label>
       <select id="sel-src-tab"></select>
@@ -673,9 +1345,9 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
     </div>
     <div class="hero" style="padding-bottom:14px">
       <span class="eyebrow">Source</span>
-      <label class="field-label" for="sel-url-col">Column with Sales Nav URLs</label>
-      <select id="sel-url-col"></select>
-      <div class="col-preview" id="col-preview"></div>
+      <label class="field-label" for="sel-url-col-listbox">Column with Sales Nav URLs</label>
+      <ul class="col-list" id="sel-url-col-listbox" role="listbox" aria-label="Column with Sales Nav URLs"></ul>
+      <select id="sel-url-col" hidden aria-hidden="true"></select>
       <label class="field-label">Row range</label>
       <div class="row-range">
         <input type="number" id="input-row-from" min="2" placeholder="2">
@@ -687,26 +1359,59 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
     <div class="body">
       <span class="eyebrow">Destination</span>
       <label class="field-label" for="input-dest-sheet">Results sheet</label>
-      <input type="text" id="input-dest-sheet" placeholder="https://docs.google.com/spreadsheets/d/…">
-      <label class="field-label" for="sel-tab-source">Tab name per job</label>
-      <select id="sel-tab-source">
-        <option value="auto">Auto-number (Scrape 1, Scrape 2…)</option>
-        <option value="fixed">Same tab for all</option>
+      <div class="field-with-pill">
+        <input type="text" id="input-dest-sheet" placeholder="https://docs.google.com/spreadsheets/d/…">
+        <button class="help-pill" type="button" data-help="sheet" data-help-context="write" aria-label="Help with sheet sharing">?</button>
+      </div>
+      <label class="field-label">Tab name per job</label>
+      <div class="radio-stack" role="radiogroup" aria-label="Tab name per job">
+        <button class="radio-card" role="radio" aria-checked="true" type="button" data-value="auto">
+          <span class="ring" aria-hidden="true"></span>
+          <span>
+            <span class="h">Auto-number them</span>
+            <span class="d">We'll create new tabs called Scrape 1, Scrape 2, etc.</span>
+          </span>
+          <span class="ex">Scrape 4</span>
+        </button>
+        <button class="radio-card" role="radio" aria-checked="false" type="button" data-value="fixed">
+          <span class="ring" aria-hidden="true"></span>
+          <span>
+            <span class="h">All in one tab</span>
+            <span class="d">Append every job's results into the same sheet tab.</span>
+          </span>
+          <span class="ex">Sales Nav Scrape</span>
+        </button>
+        <button class="radio-card" role="radio" aria-checked="false" type="button" data-value="column">
+          <span class="ring" aria-hidden="true"></span>
+          <span>
+            <span class="h">Use a column in the sheet</span>
+            <span class="d">Each job uses the tab name from a column you choose.</span>
+          </span>
+          <span class="ex">column F</span>
+        </button>
+      </div>
+      <select id="sel-tab-source" hidden aria-hidden="true">
+        <option value="auto">auto</option>
+        <option value="fixed">fixed</option>
+        <option value="column">column</option>
       </select>
       <div id="field-fixed-tab" class="hidden">
         <label class="field-label" for="input-dest-tab">Tab name</label>
         <input type="text" id="input-dest-tab" placeholder="Sales Nav Scrape">
       </div>
       <div id="field-tab-col" class="hidden">
-        <label class="field-label" for="sel-tab-col">Column with tab names</label>
-        <select id="sel-tab-col"></select>
-        <div class="col-preview" id="tab-col-preview"></div>
+        <label class="field-label" for="sel-tab-col-listbox">Column with tab names</label>
+        <ul class="col-list" id="sel-tab-col-listbox" role="listbox" aria-label="Column with tab names"></ul>
+        <select id="sel-tab-col" hidden aria-hidden="true"></select>
       </div>
     </div>
     <div class="body">
       <span class="eyebrow">Write back</span>
-      <label class="field-label" for="sel-output-col">Result link in column</label>
-      <select id="sel-output-col"><option value="-1">Don't write back</option></select>
+      <label class="field-label" for="sel-output-col-listbox">Result link in column</label>
+      <ul class="col-list" id="sel-output-col-listbox" role="listbox" aria-label="Where to write results-sheet links">
+        <li role="option" aria-selected="true" data-value="-1"><span class="col">—</span><span class="nm" style="font-style:italic; color:var(--ink-soft)">Don't write back</span><span class="preview"></span></li>
+      </ul>
+      <select id="sel-output-col" hidden aria-hidden="true"><option value="-1">Don't write back</option></select>
       <div class="helper">After each job, the results sheet link is written into this column of the source sheet.</div>
       <div class="actions between" style="margin-top:22px">
         <button class="ghost" id="btn-config-back" type="button">Back</button>
@@ -729,6 +1434,24 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
       <h2 class="title" style="font-size:20px"><span id="batch-ready-msg">Ready</span></h2>
       <p class="sub">Tap a job to decode its Sales Nav filters into chips. Toggle one off to skip it.</p>
       <ul class="jobs" id="job-list"></ul>
+      <div class="preflight preflight-memsaver hidden" data-state="initial" data-preflight-for="batch-ready" style="margin-top:16px">
+        <div class="text">
+          <span class="step-1"><strong>One-time setup:</strong> add <code>www.linkedin.com</code> to Chrome's <em>Always keep these sites active</em> list so the scrape tab can't be frozen between jobs.</span>
+          <span class="step-2"><strong>Did you add it?</strong> Confirm and we'll never nag again.</span>
+          <button class="preflight-copy" type="button" data-copy="www.linkedin.com" aria-label="Copy www.linkedin.com to clipboard">
+            <code>www.linkedin.com</code><span class="copy-hint">Copy</span>
+          </button>
+          <span class="why">chrome://settings/performance → Always keep these sites active → Add</span>
+        </div>
+        <button class="preflight-open" type="button" aria-label="Open Chrome performance settings">Open settings ↗</button>
+        <button class="preflight-confirm" type="button" aria-label="Confirm linkedin.com is on the always-active list">Yes, I added it ✓</button>
+      </div>
+      <div class="dedup-toggle hidden" id="dedup-toggle-batch" role="group" aria-label="Skip already-scraped leads">
+        <button class="switch on" id="dedup-switch-batch" type="button" aria-pressed="true" aria-label="Skip leads already in destination sheets"></button>
+        <span class="label" id="dedup-label-batch"><strong>Skip leads already in destination sheets</strong></span>
+        <span class="count" id="dedup-count-batch"></span>
+      </div>
+      <div class="dedup-note hidden" id="dedup-note-batch"></div>
       <div class="actions between" style="margin-top:20px">
         <button class="ghost" id="btn-ready-back" type="button">Back</button>
         <button class="cta" id="btn-start-batch" type="button">Start scrape<span class="pod">▶</span></button>
@@ -750,16 +1473,32 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
           <span id="bp-lbl">Page 1</span><br>
           <span style="color:var(--ink-faint)" id="bp-eta"></span>
         </div>
+        <div class="figure-meta" id="bp-skipped-row" style="display:none; margin-top:6px;">
+          <span style="color:var(--ok); font-weight:600;" id="bp-skipped-count">0</span>
+          <span style="color:var(--ink-faint);"> already-scraped skipped this job</span>
+        </div>
       </div>
       <div class="progress"><span id="bp-bar" style="width:0%"></span></div>
       <div class="progress-meta"><span id="bp-pct">0%</span><span id="bp-anon-meta"></span></div>
       <div class="anon-note hidden" id="batch-anon-note">
         <strong id="batch-anon-count">0 leads missing.</strong> Pages where fewer than 25 results were extracted after re-checks. Could be anonymous profiles your account can't see, or pages that failed to fully render.
       </div>
-      <div class="actions" style="margin-top:20px">
-        <button class="ghost" id="btn-pause-batch" type="button">Pause</button>
-        <button class="ghost warn" id="btn-recover-batch" type="button">Recover</button>
-        <button class="ghost danger" id="btn-stop-batch" type="button">Stop</button>
+      <div class="run-cluster">
+        <div class="left">
+          <button class="ghost" id="btn-pause-batch" type="button">⏸ Pause</button>
+          <button class="ghost warn" id="btn-recover-batch" type="button" title="Closes the LinkedIn tab and reopens a fresh one at the current page">↺ Looks stuck? Restart the tab</button>
+        </div>
+        <div class="stop-area">
+          <button class="ghost danger sm" id="btn-stop-batch" type="button">Stop campaign…</button>
+        </div>
+      </div>
+      <div class="confirm-strip hidden" id="confirm-stop-batch" role="alertdialog" aria-labelledby="confirm-stop-batch-msg">
+        <span class="ic" aria-hidden="true">⚠</span>
+        <span id="confirm-stop-batch-msg"><strong>Stop will throw away the leads from this in-flight page.</strong> Pause keeps them safe.</span>
+        <span class="confirm-actions">
+          <button class="ghost sm" id="btn-cancel-stop-batch" type="button">Cancel</button>
+          <button class="ghost danger sm" id="btn-confirm-stop-batch" type="button">Stop anyway</button>
+        </span>
       </div>
     </div>
     <div class="queue">
@@ -783,6 +1522,10 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
       <div class="qlabel">Summary</div>
       <ul id="batch-done-list"></ul>
     </div>
+    <div class="figure-meta" id="batch-done-skipped-row" style="display:none; padding:0 22px 14px;">
+      <span style="color:var(--ok); font-weight:600;" id="batch-done-skipped-count">0</span>
+      <span style="color:var(--ink-faint);"> already-scraped skipped across all jobs</span>
+    </div>
   </section>
 
   <!-- ════════════════════════════════════════════════════════════════════
@@ -790,18 +1533,49 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
        ════════════════════════════════════════════════════════════════════ -->
   <section id="view-batch-interrupted" class="hidden">
     <div class="hero">
-      <span class="eyebrow">Batch interrupted</span>
-      <h2 class="title" style="font-size:20px"><span id="batch-int-msg">Batch was interrupted</span></h2>
-      <p class="sub">You can resume from where it left off, or start fresh.</p>
-      <div class="stat-strip">
-        <div class="stat"><div class="v" id="bint-done">0</div><div class="l">jobs done</div></div>
-        <div class="stat"><div class="v" id="bint-total">0</div><div class="l">total</div></div>
-        <div class="stat"><div class="v">—</div><div class="l"></div></div>
+      <span class="eyebrow">Batch picked up after a stop</span>
+      <h2 class="title" style="font-size:21px">Your batch paused at <em>job <span id="bint-job-prom">—</span> of <span id="bint-total-prom">—</span></em>.</h2>
+      <p class="sub"><span id="bint-summary">No jobs finished yet.</span> Pick up from the next pending job, or throw it all away.</p>
+      <div class="resume-card">
+        <div class="where">Continue from</div>
+        <div class="stats">
+          <div class="stat-mini"><div class="v" id="bint-next">—</div><div class="l">next job</div></div>
+          <div class="stat-mini"><div class="v" id="bint-done">0</div><div class="l">jobs done</div></div>
+          <div class="stat-mini"><div class="v" id="bint-remaining">—</div><div class="l">remaining</div></div>
+        </div>
+        <button class="cta-resume" id="btn-resume-batch" type="button">
+          <span class="pod" aria-hidden="true">▶</span>
+          <span class="stack">
+            <span class="h" id="bint-cta-h">Keep going from job —</span>
+            <span class="d" id="bint-cta-d">— jobs done</span>
+          </span>
+        </button>
       </div>
-      <div class="actions" style="margin-top:20px">
-        <button class="cta" id="btn-resume-batch" type="button">Resume<span class="pod">▶</span></button>
-        <button class="ghost" id="btn-discard-batch" type="button">Start fresh</button>
+      <div class="preflight preflight-memsaver hidden" data-state="initial" data-preflight-for="batch-interrupted" style="margin-top:14px">
+        <div class="text">
+          <span class="step-1"><strong>Before resuming:</strong> add <code>www.linkedin.com</code> to Chrome's <em>Always keep these sites active</em> list so the tab can't be frozen again.</span>
+          <span class="step-2"><strong>Did you add it?</strong> Confirm and we'll never nag again.</span>
+          <button class="preflight-copy" type="button" data-copy="www.linkedin.com" aria-label="Copy www.linkedin.com to clipboard">
+            <code>www.linkedin.com</code><span class="copy-hint">Copy</span>
+          </button>
+          <span class="why">chrome://settings/performance → Always keep these sites active → Add</span>
+        </div>
+        <button class="preflight-open" type="button" aria-label="Open Chrome performance settings">Open settings ↗</button>
+        <button class="preflight-confirm" type="button" aria-label="Confirm linkedin.com is on the always-active list">Yes, I added it ✓</button>
       </div>
+      <div class="actions" style="margin-top:14px; justify-content:flex-end;">
+        <button class="danger-link" id="btn-discard-batch" type="button">Throw away this batch and start over</button>
+      </div>
+      <div class="confirm-strip hidden" id="confirm-discard-batch" role="alertdialog" aria-labelledby="confirm-discard-batch-msg">
+        <span class="ic" aria-hidden="true">⚠</span>
+        <span id="confirm-discard-batch-msg"><strong>This deletes the saved progress.</strong> Leads already written to result sheets stay there.</span>
+        <span class="confirm-actions">
+          <button class="ghost sm" id="btn-cancel-discard-batch" type="button">Cancel</button>
+          <button class="ghost danger sm" id="btn-confirm-discard-batch" type="button">Throw it away</button>
+        </span>
+      </div>
+      <input type="hidden" id="batch-int-msg" value="">
+      <input type="hidden" id="bint-total" value="0">
     </div>
     <div class="queue">
       <div class="qlabel">Jobs</div>
@@ -845,15 +1619,15 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
       </div>
       <div class="row">
         <div>
-          <div class="label">Chrome Memory Saver</div>
-          <div class="desc">Auto-handled — every scrape tab is pinned as non-discardable so Chrome can't freeze it mid-run. If you still see stalls, open Chrome's performance page and confirm the LinkedIn tab isn't dimmed.</div>
+          <div class="label">Activity log</div>
+          <div class="desc">Live timeline of what the scraper did — pages loaded, retries, filter checks, errors. Open this and copy everything if something breaks and you need help.</div>
         </div>
-        <button class="cmd-pill" id="btn-open-perf-settings" type="button" aria-label="Open Chrome performance settings">
-          <span>Open settings</span>
+        <button class="cmd-pill" id="btn-open-logs" type="button" aria-label="Open activity log">
+          <span>View log</span>
           <span class="copy-hint">↗</span>
         </button>
       </div>
-      <div class="actions" style="margin-top:18px; padding-top:4px;">
+      <div class="actions" style="margin-top:20px; padding-top:4px;">
         <button class="ghost" id="btn-settings-back" type="button">← Back</button>
       </div>
     </div>

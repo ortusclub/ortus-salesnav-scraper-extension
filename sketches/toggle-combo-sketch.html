@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Toggle combo — Single/Batch + Slow</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+:root{
+  --ink:#16140F; --ink-2:#2C2A24; --ink-soft:#6B6557; --ink-faint:#A39B89;
+  --paper:#FDFBF7; --paper-2:#F6F2E9; --paper-warm:#F1ECDF;
+  --rule:#E5DFD0; --rule-2:#C9C0AC;
+  --gold:#C99046; --gold-deep:#9B6A26; --gold-warm:#F0CE89; --gold-tint:#F6E8C8;
+  --ok:#4F7A4D; --err:#8B3A2E;
+  --serif:"Newsreader","Charter",Georgia,serif;
+  --sans:"Geist",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --mono:"Geist Mono","JetBrains Mono",monospace;
+  --ease:cubic-bezier(0.32,0.72,0,1);
+}
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:#E8E1CC;
+  font-family:var(--sans); font-size:14px; color:var(--ink-2);
+  -webkit-font-smoothing:antialiased;
+  padding:60px 40px 100px;
+}
+
+.board{max-width:520px; margin:0 auto;}
+
+.top{margin-bottom:36px; padding-bottom:24px; border-bottom:1px solid var(--rule-2);}
+.top .eyebrow{
+  font-family:var(--mono); font-size:10px; letter-spacing:0.22em; text-transform:uppercase;
+  color:var(--gold-deep); margin-bottom:10px;
+}
+.top h1{
+  font-family:var(--serif); font-weight:500; font-size:32px; line-height:1.1;
+  letter-spacing:-0.02em; color:var(--ink); margin:0 0 12px;
+}
+.top h1 em{font-style:italic; font-weight:400;}
+.top .lead{font-size:13.5px; line-height:1.6; color:var(--ink-soft);}
+
+.section{margin-bottom:48px;}
+.section h2{
+  font-family:var(--serif); font-weight:500; font-size:18px; color:var(--ink);
+  margin:0 0 4px;
+}
+.section .why{
+  font-family:var(--mono); font-size:11px; letter-spacing:0.06em;
+  color:var(--ink-soft); margin-bottom:14px; line-height:1.55;
+}
+.section .why strong{color:var(--ink); font-weight:600;}
+
+/* Popup primitive */
+.popup{
+  width:432px; max-width:100%;
+  background:var(--paper); border-radius:14px;
+  border:1px solid var(--rule);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 8px 24px -16px rgba(20,15,5,0.18);
+  overflow:hidden;
+}
+.popup .mast{
+  padding:16px 22px;
+  display:grid; grid-template-columns:1fr auto;
+  align-items:center; gap:10px;
+  border-bottom:1px solid var(--rule);
+  background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.popup .brand{display:flex; align-items:center; gap:10px;}
+.popup .mark{display:inline-block; width:28px; height:28px; border-radius:6px; background:var(--ink); flex-shrink:0;}
+.popup .name{font-family:var(--serif); font-weight:500; font-size:13.5px; color:var(--ink);}
+.popup .sub{font-family:var(--mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:var(--ink-faint); margin-top:1px;}
+.popup .right-actions{display:flex; align-items:center; gap:8px;}
+.popup .float-pill,.popup .live{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-soft); background:transparent; border:1px solid var(--rule-2);
+  padding:4px 10px; border-radius:999px;
+}
+
+/* Mode-seg primitive (current) */
+.mode-seg{
+  display:inline-flex; padding:3px; border-radius:999px;
+  background:var(--paper-2); border:1px solid var(--rule-2);
+}
+.mode-seg button{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  padding:7px 18px; border-radius:999px; min-height:34px;
+  font-family:var(--sans); font-size:12px; font-weight:500; color:var(--ink-soft);
+  display:inline-flex; align-items:center; gap:7px;
+  transition:all 220ms var(--ease);
+}
+.mode-seg button[aria-pressed="true"]{background:var(--ink); color:var(--paper);}
+.mode-seg button .ic{font-size:11px;}
+
+/* Slow toggle primitives — multiple variants */
+
+/* Variant A — quiet inline switch */
+.slow-switch{
+  display:inline-flex; align-items:center; gap:8px;
+  cursor:pointer; user-select:none;
+  font-family:var(--sans); font-size:11.5px; color:var(--ink-soft);
+}
+.slow-switch .track{
+  width:30px; height:18px; border-radius:999px;
+  background:var(--rule-2); position:relative;
+  transition:background 200ms var(--ease);
+}
+.slow-switch .track::after{
+  content:""; position:absolute; top:2px; left:2px;
+  width:14px; height:14px; border-radius:50%; background:var(--paper);
+  transition:left 200ms var(--ease);
+}
+.slow-switch.on .track{background:var(--gold);}
+.slow-switch.on .track::after{left:14px;}
+.slow-switch.on{color:#6F4715;}
+
+/* Variant B — small mono pill matching mode-seg style */
+.slow-pill{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 12px; border-radius:999px;
+  background:transparent; border:1px solid var(--rule-2); color:var(--ink-soft);
+  font-family:var(--mono); font-size:9.5px; font-weight:600;
+  letter-spacing:0.14em; text-transform:uppercase;
+  cursor:pointer;
+}
+.slow-pill .dot{width:5px; height:5px; border-radius:50%; background:var(--ink-faint);}
+.slow-pill .state{
+  margin-left:4px; padding-left:6px;
+  border-left:1px solid var(--rule-2); color:var(--ink-faint);
+}
+.slow-pill[aria-pressed="true"]{border-color:var(--gold-deep); color:#6F4715;}
+.slow-pill[aria-pressed="true"] .dot{background:var(--gold);}
+.slow-pill[aria-pressed="true"] .state{color:#6F4715; border-left-color:rgba(155,106,38,0.35);}
+
+/* Variant C — segmented "third option" inside a wider pill */
+.combo-seg{
+  display:inline-flex; padding:3px; border-radius:999px;
+  background:var(--paper-2); border:1px solid var(--rule-2); align-items:center;
+}
+.combo-seg button{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  padding:7px 18px; border-radius:999px; min-height:34px;
+  font-family:var(--sans); font-size:12px; font-weight:500; color:var(--ink-soft);
+  display:inline-flex; align-items:center; gap:7px;
+}
+.combo-seg button[aria-pressed="true"]{background:var(--ink); color:var(--paper);}
+.combo-seg .divider{width:1px; height:18px; background:var(--rule-2); margin:0 4px;}
+.combo-seg .slow-mini{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 12px 5px 8px; border-radius:999px;
+  font-family:var(--mono); font-size:9.5px; font-weight:600;
+  letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-soft);
+  cursor:pointer;
+}
+.combo-seg .slow-mini .dot{width:5px; height:5px; border-radius:50%; background:var(--ink-faint);}
+.combo-seg .slow-mini[aria-pressed="true"]{background:var(--gold-tint); color:#6F4715;}
+.combo-seg .slow-mini[aria-pressed="true"] .dot{background:var(--gold-deep); box-shadow:0 0 0 2px rgba(201,144,70,0.18);}
+
+/* Strip layouts */
+.strip-A{
+  padding:14px 22px; border-bottom:1px solid var(--rule);
+  background:var(--paper);
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+}
+.strip-B{
+  padding:14px 22px; border-bottom:1px solid var(--rule);
+  background:var(--paper);
+  display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:14px;
+}
+.strip-B .left{justify-self:start; min-width:0;}
+.strip-B .right{justify-self:end; min-width:0;}
+.strip-C{
+  padding:14px 22px; border-bottom:1px solid var(--rule);
+  background:var(--paper);
+  display:flex; align-items:center; justify-content:center;
+}
+
+.body-stub{
+  padding:24px 26px;
+  font-family:var(--mono); font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--ink-faint); text-align:center;
+}
+
+.note{
+  margin-top:14px; padding:12px 14px;
+  border-radius:8px; background:var(--paper);
+  border:1px solid var(--rule); border-left:3px solid var(--gold-deep);
+  font-size:12.5px; color:var(--ink-soft); line-height:1.6;
+}
+.note strong{color:var(--ink); font-weight:600;}
+.note ul{margin:4px 0 0 0; padding-left:18px;}
+.note li{margin:3px 0;}
+
+.stamp{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase;
+  margin-bottom:10px;
+  padding:4px 10px; border-radius:999px;
+  color:var(--ok); background:rgba(79,122,77,0.08); border:1px solid rgba(79,122,77,0.30);
+}
+.stamp.current{color:var(--err); background:rgba(139,58,46,0.06); border-color:rgba(139,58,46,0.25);}
+.stamp .dot{width:6px; height:6px; border-radius:50%; background:currentColor;}
+</style>
+</head>
+<body>
+<div class="board">
+
+  <header class="top">
+    <div class="eyebrow">Toggle combo · sketch</div>
+    <h1>One strip, two <em>controls</em>.</h1>
+    <p class="lead">
+      Currently Single/Batch and Slow live in two stacked strips. You want them in one. Three layouts to pick from — each preserves the visual hierarchy (Single/Batch is the big decision, Slow is the per-machine preference).
+    </p>
+  </header>
+
+  <!-- ─── Reference: Current ─────────────────────────────── -->
+  <section class="section">
+    <span class="stamp current"><span class="dot"></span>Current · v3.10.2</span>
+    <h2>Two strips, stacked.</h2>
+    <p class="why">Mode toggle on its own row, Slow + (Old PC, VMs) hint underneath.</p>
+    <div class="popup">
+      <div class="mast">
+        <div class="brand">
+          <span class="mark"></span>
+          <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.10.2</div></div>
+        </div>
+        <div class="right-actions"><span class="float-pill">↗ Float</span><span class="live">● Standby</span></div>
+      </div>
+      <div class="strip-C">
+        <div class="mode-seg" role="tablist">
+          <button aria-pressed="false" type="button"><span class="ic">⚡</span>Single</button>
+          <button aria-pressed="true" type="button"><span class="ic">▦</span>Batch</button>
+        </div>
+      </div>
+      <div style="padding:10px 22px; border-bottom:1px solid var(--rule); background:var(--paper-2); font-family:var(--mono); font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--ink-faint); display:flex; align-items:center; gap:10px;">
+        <span style="color:var(--ink-soft);">Speed</span>
+        <span style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border:1px solid var(--rule-2); border-radius:999px; font-weight:600; color:var(--ink-2);"><span style="width:5px; height:5px; border-radius:50%; background:var(--ink-faint);"></span>Slow<span style="margin-left:6px; padding-left:6px; border-left:1px solid var(--rule-2); color:var(--ink-faint);">Off</span></span>
+        <span>(Old PC, VMs)</span>
+      </div>
+      <div class="body-stub">— rest of popup —</div>
+    </div>
+  </section>
+
+
+  <!-- ─── Variant A — Mode centered, slow as a quiet inline switch right ─── -->
+  <section class="section">
+    <span class="stamp"><span class="dot"></span>Variant A · slow as quiet switch</span>
+    <h2>Mode pill centered, slow toggle quietly on the right.</h2>
+    <p class="why">Single strip. Mode-seg sits at center stage where the eye lands. Slow becomes a small toggle-switch with text, anchored right. The "(Old PC, VMs)" hint is dropped — the label "Slow" + the toggle's clear off/on state already says it.</p>
+    <div class="popup">
+      <div class="mast">
+        <div class="brand">
+          <span class="mark"></span>
+          <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.11</div></div>
+        </div>
+        <div class="right-actions"><span class="float-pill">↗ Float</span><span class="live">● Standby</span></div>
+      </div>
+      <div class="strip-B">
+        <span class="left"></span>
+        <div class="mode-seg" role="tablist">
+          <button aria-pressed="false" type="button"><span class="ic">⚡</span>Single</button>
+          <button aria-pressed="true" type="button"><span class="ic">▦</span>Batch</button>
+        </div>
+        <label class="slow-switch right" aria-label="Slow mode for older machines">
+          <span>Slow</span>
+          <span class="track"></span>
+        </label>
+      </div>
+      <div class="body-stub">— rest of popup —</div>
+    </div>
+    <div class="note">
+      <strong>Pros:</strong> mode is visually dominant, slow is unmistakable but doesn't compete. Switch shape signals "preference" not "primary action."<br>
+      <strong>Cons:</strong> drops the "(Old PC, VMs)" hint — first-time users may not know when to flip Slow on. Could add a tooltip on hover/focus.
+    </div>
+  </section>
+
+
+  <!-- ─── Variant B — Mode left, slow as parallel mono pill right ─── -->
+  <section class="section">
+    <span class="stamp"><span class="dot"></span>Variant B · two pills, balanced</span>
+    <h2>Mode left, slow as a matching mono pill on the right.</h2>
+    <p class="why">Mode-seg on the left, slow as a smaller pill on the right with the same "● SLOW · Off" treatment used today. Visual rhyme — both look like settings pills. Loses the centered-mode prominence but gains parallelism.</p>
+    <div class="popup">
+      <div class="mast">
+        <div class="brand">
+          <span class="mark"></span>
+          <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.11</div></div>
+        </div>
+        <div class="right-actions"><span class="float-pill">↗ Float</span><span class="live">● Standby</span></div>
+      </div>
+      <div class="strip-A">
+        <div class="mode-seg" role="tablist">
+          <button aria-pressed="false" type="button"><span class="ic">⚡</span>Single</button>
+          <button aria-pressed="true" type="button"><span class="ic">▦</span>Batch</button>
+        </div>
+        <button class="slow-pill" aria-pressed="false" type="button">
+          <span class="dot"></span>Slow<span class="state">Off</span>
+        </button>
+      </div>
+      <div class="body-stub">— rest of popup —</div>
+    </div>
+    <div class="note">
+      <strong>Pros:</strong> two pills feel balanced, both interactive controls have the same affordance grammar. Tightest fit — works at narrow widths.<br>
+      <strong>Cons:</strong> mode-seg loses center stage. Two pills that look similar can blur which is the "primary" decision. Some users may scan past Slow as a duplicate Single/Batch.
+    </div>
+  </section>
+
+
+  <!-- ─── Variant B-1 — B with hint inline ─── -->
+  <section class="section" style="background:rgba(79,122,77,0.04); padding:20px; border-radius:12px; border:1px solid rgba(79,122,77,0.20);">
+    <span class="stamp"><span class="dot"></span>Variant B-1 · hint inline</span>
+    <h2>B with the "for who" hint, inline next to the pill.</h2>
+    <p class="why">Mode-seg left. Slow pill right. <strong>"For old PCs / VMs"</strong> sits in mono caption between the slow pill and the right edge — close enough to read as belonging to Slow, distinct enough not to look like a button.</p>
+    <div class="popup">
+      <div class="mast">
+        <div class="brand">
+          <span class="mark"></span>
+          <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.11</div></div>
+        </div>
+        <div class="right-actions"><span class="float-pill">↗ Float</span><span class="live">● Standby</span></div>
+      </div>
+      <div class="strip-A">
+        <div class="mode-seg" role="tablist">
+          <button aria-pressed="false" type="button"><span class="ic">⚡</span>Single</button>
+          <button aria-pressed="true" type="button"><span class="ic">▦</span>Batch</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button class="slow-pill" aria-pressed="false" type="button">
+            <span class="dot"></span>Slow<span class="state">Off</span>
+          </button>
+          <span style="font-family:var(--mono); font-size:9.5px; letter-spacing:0.06em; color:var(--ink-faint); white-space:nowrap; line-height:1.3; font-style:italic;">old PC<br>or VM</span>
+        </div>
+      </div>
+      <div class="body-stub">— rest of popup —</div>
+    </div>
+    <div class="note">
+      <strong>Pros:</strong> compact, single row, hint is always visible. No tooltip dependency.<br>
+      <strong>Cons:</strong> two-line caption is a touch dense. Reading "old PC / or VM" sideways is fast for sighted users but a screen reader picks it up as a separate block — should be tied via <code style="font-family:var(--mono); font-size:11px;">aria-describedby</code> on the slow pill.
+    </div>
+  </section>
+
+
+  <!-- ─── Variant B-2 — B with hint stacked under the slow pill ─── -->
+  <section class="section" style="background:rgba(79,122,77,0.04); padding:20px; border-radius:12px; border:1px solid rgba(79,122,77,0.20);">
+    <span class="stamp"><span class="dot"></span>Variant B-2 · hint stacked under</span>
+    <h2>B with the hint as a caption directly beneath the slow pill.</h2>
+    <p class="why">Same B layout, but the hint moves to a single line directly below the slow pill — visually anchored to it. Strip is ~6px taller but reads cleaner because nothing competes horizontally.</p>
+    <div class="popup">
+      <div class="mast">
+        <div class="brand">
+          <span class="mark"></span>
+          <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.11</div></div>
+        </div>
+        <div class="right-actions"><span class="float-pill">↗ Float</span><span class="live">● Standby</span></div>
+      </div>
+      <div class="strip-A" style="align-items:flex-start; padding-top:12px; padding-bottom:12px;">
+        <div class="mode-seg" role="tablist" style="margin-top:2px;">
+          <button aria-pressed="false" type="button"><span class="ic">⚡</span>Single</button>
+          <button aria-pressed="true" type="button"><span class="ic">▦</span>Batch</button>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+          <button class="slow-pill" aria-pressed="false" type="button">
+            <span class="dot"></span>Slow<span class="state">Off</span>
+          </button>
+          <span style="font-family:var(--mono); font-size:9px; letter-spacing:0.06em; color:var(--ink-faint); font-style:italic;">for old PC or VM</span>
+        </div>
+      </div>
+      <div class="body-stub">— rest of popup —</div>
+    </div>
+    <div class="note">
+      <strong>Pros:</strong> hint clearly belongs to Slow (vertical alignment). Single-line caption reads cleanly. Best a11y option (caption is positioned in DOM right after the pill).<br>
+      <strong>Cons:</strong> strip is taller by ~12px. Mode-seg and slow are now top-aligned not center-aligned, which slightly weakens the parallel pill rhyme.
+    </div>
+  </section>
+
+
+  <!-- ─── Variant C — Single combined pill: mode + slow as a third element ─── -->
+  <section class="section">
+    <span class="stamp"><span class="dot"></span>Variant C · one pill, three states</span>
+    <h2>One unified pill: Single | Batch · Slow.</h2>
+    <p class="why">Mode-seg and Slow live inside the same pill, separated by a hairline divider. Slow becomes a third toggleable chip with a colored fill when active. Most compact, but mixes two semantic concepts (mode = exclusive choice, slow = boolean flag) inside one container.</p>
+    <div class="popup">
+      <div class="mast">
+        <div class="brand">
+          <span class="mark"></span>
+          <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.11</div></div>
+        </div>
+        <div class="right-actions"><span class="float-pill">↗ Float</span><span class="live">● Standby</span></div>
+      </div>
+      <div class="strip-C">
+        <div class="combo-seg">
+          <button aria-pressed="false" type="button"><span class="ic">⚡</span>Single</button>
+          <button aria-pressed="true" type="button"><span class="ic">▦</span>Batch</button>
+          <span class="divider"></span>
+          <button class="slow-mini" aria-pressed="false" type="button"><span class="dot"></span>Slow</button>
+        </div>
+      </div>
+      <div class="body-stub">— rest of popup —</div>
+    </div>
+    <div class="note">
+      <strong>Pros:</strong> visually striking — one big pill anchors the popup. Clear that mode and slow are in the same "settings family." Compact.<br>
+      <strong>Cons:</strong> conflates two different decision types in one container (radio vs. boolean). If user toggles Slow, they might briefly think they unselected Single/Batch. Accessibility: needs careful ARIA — the slow chip is a `button[aria-pressed]`, not part of the radio-group.
+    </div>
+  </section>
+
+  <!-- ─── My recommendation ─── -->
+  <section class="section" style="margin-top:60px; padding-top:24px; border-top:1px solid var(--rule-2);">
+    <span class="stamp"><span class="dot"></span>My pick · between the two B's</span>
+    <h2>Variant B-2.</h2>
+    <p class="why">
+      You already chose B's structure (mode left, slow right). Of the two ways to keep the
+      "for who" hint: <strong>B-2 wins on three counts</strong> — (1) the caption sits directly
+      under the pill it explains, so the relationship is unambiguous; (2) it's one clean line
+      instead of B-1's two-line wrap; (3) it places best for screen readers (caption follows
+      the pill in DOM order, can be tied via <code style="font-family:var(--mono); font-size:11px;">aria-describedby</code>).
+      The only cost is ~12 extra pixels of strip height, which the popup easily absorbs.
+    </p>
+    <p class="why" style="margin-top:14px; color:var(--ink-soft);">
+      Confirm B-2 and I'll wire it. Or if you prefer B-1's compact single row, say so — both are equally easy.
+    </p>
+  </section>
+
+</div>
+</body>
+</html>

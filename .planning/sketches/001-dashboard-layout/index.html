@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch 001 — Dashboard Layout · Sales Nav Scraper</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+/* === Page chrome (sketch viewer, not popup) === */
+body {
+  font-family: var(--sans);
+  background: linear-gradient(180deg, #ECE5D2 0%, #DCD3BC 100%);
+  color: var(--ink-2);
+  min-height: 100vh;
+  padding: 32px 24px 80px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page-head {
+  max-width: 1380px; margin: 0 auto 24px;
+}
+.page-head .eyebrow {
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--gold-deep); display: inline-flex; gap: 8px; align-items: center;
+}
+.page-head .eyebrow::before { content: ""; width: 18px; height: 1px; background: var(--gold-deep); }
+.page-head h1 {
+  font-family: var(--serif); font-weight: 500; font-size: 32px; letter-spacing: -0.02em;
+  color: var(--ink); margin-top: 6px;
+}
+.page-head h1 em { font-style: italic; font-weight: 400; }
+.page-head p {
+  margin-top: 8px; font-size: 13.5px; line-height: 1.55; color: var(--ink-soft); max-width: 700px;
+}
+
+.toolbar {
+  max-width: 1380px; margin: 0 auto 28px;
+  display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+  padding: 14px 18px;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 12px;
+}
+.toolbar .group { display: flex; align-items: center; gap: 8px; }
+.toolbar .label {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.toolbar button {
+  font-family: var(--sans); font-size: 12px; font-weight: 500;
+  padding: 7px 14px; border-radius: 999px;
+  background: transparent; border: 1px solid var(--rule-2); color: var(--ink-2);
+  transition: all 200ms var(--ease);
+}
+.toolbar button:hover { border-color: var(--ink); color: var(--ink); }
+.toolbar button[aria-pressed="true"] {
+  background: var(--ink); color: var(--paper); border-color: var(--ink);
+}
+
+/* Side-by-side variants */
+.variant-row {
+  max-width: 1380px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(3, 400px); gap: 36px;
+  justify-content: center;
+}
+@media (max-width: 1340px) { .variant-row { grid-template-columns: repeat(2, 400px); } }
+@media (max-width: 880px) { .variant-row { grid-template-columns: 400px; } }
+
+.variant-card { display: flex; flex-direction: column; gap: 12px; }
+.variant-card .caption {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.variant-card .caption .tag {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--gold-deep);
+}
+.variant-card .caption .name {
+  font-family: var(--serif); font-weight: 500; font-size: 18px; color: var(--ink); letter-spacing: -0.01em;
+}
+.variant-card .caption .desc {
+  font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; max-width: 380px;
+}
+
+/* === The popup (shared) === */
+.popup {
+  width: 400px;
+  background: var(--paper);
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 0 0 1px rgba(60,40,10,0.04),
+    0 30px 60px -28px rgba(20,15,5,0.35);
+  font-family: var(--sans); font-size: 13px; color: var(--ink-2);
+}
+.popup::before {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.32  0 0 0 0 0.27  0 0 0 0 0.18  0 0 0 0.07 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+}
+.popup > * { position: relative; z-index: 1; }
+
+/* Masthead — shared across variants */
+.mast {
+  padding: 16px 20px 14px;
+  display: grid; grid-template-columns: 1fr auto;
+  align-items: center; gap: 12px;
+  border-bottom: 1px solid var(--rule);
+  background: linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.mark {
+  position: relative; width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--ink);
+  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-size: 21px; line-height: 1; letter-spacing: -0.02em;
+}
+.mark::after {
+  content: ""; position: absolute; right: -5px; bottom: 4px;
+  width: 4px; height: 4px; border-radius: 50%; background: var(--gold);
+}
+.brand-text .name {
+  font-family: var(--serif); font-weight: 500; font-size: 14px; color: var(--ink);
+}
+.brand-text .sub {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-faint); margin-top: 1px;
+}
+
+.live {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: var(--gold-tint); border: 1px solid var(--gold-deep); color: #6F4715;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600;
+}
+.live[data-state="standby"] { background: transparent; border-color: var(--rule-2); color: var(--ink-soft); }
+.live[data-state="done"] { background: rgba(79,122,77,0.12); border-color: var(--ok); color: var(--ok); }
+.live .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold-deep); }
+.live[data-state="standby"] .dot { background: var(--ink-faint); }
+.live[data-state="done"] .dot { background: var(--ok); }
+.live[data-state="running"] .dot { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
+
+/* Eyebrow rule-prefix */
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--gold-deep);
+}
+.eyebrow::before { content: ""; width: 16px; height: 1px; background: var(--gold-deep); }
+
+/* Inputs */
+input[type="url"], input[type="text"] {
+  width: 100%; height: 38px; padding: 0 12px;
+  border-radius: 6px; border: 1px solid var(--rule);
+  background: var(--paper);
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+  transition: all 200ms var(--ease);
+}
+input[type="url"]:focus, input[type="text"]:focus {
+  outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(201,144,70,0.18);
+}
+label.field-label {
+  display: block;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-faint); margin: 0 0 6px;
+}
+
+/* Buttons */
+.cta {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 38px; padding: 4px 4px 4px 16px;
+  border-radius: 999px;
+  background: var(--ink); color: var(--paper); border: 0;
+  font: 500 12.5px/1 var(--sans);
+  transition: transform 280ms var(--ease), background 280ms var(--ease);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.07) inset, 0 10px 22px -10px rgba(20,15,5,0.5);
+}
+.cta:hover { transform: translateY(-1px); background: #000; }
+.cta .pod {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--gold); color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px;
+}
+.ghost {
+  height: 32px; padding: 0 14px;
+  border-radius: 999px;
+  background: transparent; color: var(--ink-2);
+  border: 1px solid var(--rule-2);
+  font: 500 11.5px/1 var(--sans);
+  transition: all 240ms var(--ease);
+}
+.ghost:hover { border-color: var(--ink); color: var(--ink); }
+
+/* Status chip — replaces the existing dashboard's color-coded chips */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  font-weight: 600;
+}
+.chip.pending { background: var(--paper-2); color: var(--ink-faint); border: 1px solid var(--rule); }
+.chip.running { background: var(--gold-tint); color: #6F4715; border: 1px solid var(--gold-deep); }
+.chip.done { background: rgba(79,122,77,0.10); color: var(--ok); border: 1px solid rgba(79,122,77,0.4); }
+.chip.partial { background: rgba(139,58,46,0.08); color: var(--err); border: 1px solid rgba(139,58,46,0.35); }
+.chip .dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.chip.running .dot { animation: pulse 1.4s ease-in-out infinite; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   VARIANT A — Linear Stepper
+   Single-flow popup, one step at a time. Best for first-time users.
+   ───────────────────────────────────────────────────────────────────── */
+.va .step-rail {
+  padding: 14px 20px; border-bottom: 1px solid var(--rule);
+  display: flex; align-items: center; gap: 8px; background: var(--paper);
+}
+.va .step {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.va .step .num {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--rule-2); display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9.5px; font-weight: 600;
+}
+.va .step.active { color: var(--ink); }
+.va .step.active .num { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.va .step.done .num { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+.va .step + .step::before { content: ""; width: 14px; height: 1px; background: var(--rule-2); }
+
+.va .stage { padding: 22px 22px 22px; }
+.va .stage .eyebrow { margin-bottom: 12px; }
+.va .stage h2 {
+  font-family: var(--serif); font-weight: 500; font-size: 22px; color: var(--ink); letter-spacing: -0.012em;
+  margin-bottom: 4px;
+}
+.va .stage .lede { color: var(--ink-soft); font-size: 12.5px; line-height: 1.55; margin-bottom: 16px; }
+.va .stage .field + .field { margin-top: 14px; }
+.va .stage .actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+.va .stage .helper { font-size: 11px; color: var(--ink-faint); margin-top: 6px; }
+
+/* Running view (same shell, just different content) */
+.va .run-summary { padding: 22px 22px 22px; }
+.va .run-summary .name {
+  font-family: var(--serif); font-weight: 500; font-size: 22px; color: var(--ink);
+  letter-spacing: -0.01em; line-height: 1.15;
+}
+.va .run-summary .sub { color: var(--ink-soft); font-size: 12px; margin-top: 4px; }
+.va .stat-strip {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  margin-top: 16px;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+}
+.va .stat-strip .stat { padding: 12px 14px; border-right: 1px solid var(--rule); }
+.va .stat-strip .stat:last-child { border-right: 0; }
+.va .stat-strip .stat .v {
+  font-family: var(--serif); font-weight: 500; font-size: 22px; letter-spacing: -0.02em;
+  color: var(--ink); line-height: 1;
+}
+.va .stat-strip .stat .l {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-faint); margin-top: 5px;
+}
+.va .progress {
+  margin-top: 16px;
+  height: 4px; background: var(--paper-2); border-radius: 2px; overflow: hidden;
+}
+.va .progress > span { display: block; height: 100%; background: var(--gold); transition: width 0.6s var(--ease); }
+.va .progress-meta {
+  display: flex; justify-content: space-between; margin-top: 8px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em;
+  color: var(--ink-soft); text-transform: uppercase;
+}
+.va .anon-note {
+  margin-top: 14px; padding: 10px 14px;
+  border-radius: 8px; background: var(--paper-2); border-left: 2px solid var(--gold-deep);
+  font-size: 11.5px; color: var(--ink-soft); line-height: 1.5;
+}
+.va .anon-note strong { color: var(--ink-2); font-weight: 600; }
+.va .running-actions { display: flex; gap: 10px; margin-top: 16px; }
+
+/* Done view */
+.va .done-card { padding: 22px 22px 22px; }
+.va .done-card .badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(79,122,77,0.10); color: var(--ok);
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+  font-weight: 600;
+}
+.va .done-card h2 {
+  margin-top: 12px;
+  font-family: var(--serif); font-weight: 500; font-size: 24px; color: var(--ink); letter-spacing: -0.015em;
+}
+.va .done-card .figure {
+  margin-top: 4px;
+  font-family: var(--serif); font-weight: 500; font-size: 44px; line-height: 1;
+  letter-spacing: -0.025em; color: var(--ink);
+}
+.va .done-card .figure .of { color: var(--ink-faint); font-style: italic; font-size: 22px; margin-left: 8px; }
+.va .done-card .meta-row { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+.va .done-card .meta-row .meta {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.va .done-card .meta-row .meta strong { color: var(--ink); font-weight: 600; }
+.va .done-card .actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+.va .done-card .sheet-link {
+  margin-top: 12px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--gold-deep);
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--rule-2);
+  word-break: break-all;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   VARIANT B — Two-Pane Editorial
+   Sidebar with jobs list, main area with active run.
+   ───────────────────────────────────────────────────────────────────── */
+.vb .layout {
+  display: grid; grid-template-columns: 132px 1fr; min-height: 540px;
+}
+.vb .sidebar {
+  border-right: 1px solid var(--rule);
+  background: var(--paper-2);
+  padding: 14px 0 14px;
+  display: flex; flex-direction: column;
+}
+.vb .sidebar .ledger-label {
+  padding: 0 14px 10px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--rule);
+}
+.vb .sidebar ul { list-style: none; padding: 8px 0; margin: 0; flex: 1; }
+.vb .sidebar li {
+  padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 4px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  transition: background 200ms var(--ease);
+}
+.vb .sidebar li:hover { background: var(--paper); }
+.vb .sidebar li.active {
+  background: var(--paper); border-left-color: var(--gold);
+}
+.vb .sidebar li .row { display: flex; align-items: center; gap: 6px; }
+.vb .sidebar li .num {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--ink-faint);
+  width: 16px;
+}
+.vb .sidebar li .nm {
+  font-family: var(--serif); font-weight: 500; font-size: 13px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;
+}
+.vb .sidebar li .sub {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.05em;
+  color: var(--ink-soft); padding-left: 22px;
+}
+.vb .sidebar li.active .sub { color: var(--ink-2); }
+.vb .sidebar .add {
+  margin: 8px 14px 0;
+  height: 30px; padding: 0 10px;
+  border: 1px dashed var(--rule-2); border-radius: 6px;
+  background: transparent; color: var(--ink-soft);
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.vb .sidebar .add:hover { border-color: var(--ink); color: var(--ink); }
+
+.vb .main { padding: 18px 20px 20px; }
+.vb .main .lede-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.vb .main .eyebrow { margin-bottom: 6px; }
+.vb .main .job-name {
+  font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--ink);
+  letter-spacing: -0.012em; line-height: 1.15;
+}
+.vb .main .job-sub { color: var(--ink-soft); font-size: 11.5px; margin-top: 4px; }
+.vb .stat-strip {
+  display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 14px;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+}
+.vb .stat-strip .stat { padding: 11px 12px; border-right: 1px solid var(--rule); }
+.vb .stat-strip .stat:last-child { border-right: 0; }
+.vb .stat-strip .stat .v { font-family: var(--serif); font-weight: 500; font-size: 18px; color: var(--ink); line-height: 1; letter-spacing: -0.015em; }
+.vb .stat-strip .stat .l { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); margin-top: 4px; }
+.vb .progress { margin-top: 12px; height: 3px; background: var(--paper-2); border-radius: 2px; overflow: hidden; }
+.vb .progress > span { display: block; height: 100%; background: var(--gold); }
+.vb .progress-meta { display: flex; justify-content: space-between; margin-top: 6px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--ink-soft); text-transform: uppercase; }
+.vb .anon-note {
+  margin-top: 12px; padding: 8px 12px; border-radius: 6px;
+  background: var(--paper-2); border-left: 2px solid var(--gold-deep);
+  font-size: 11px; color: var(--ink-soft); line-height: 1.5;
+}
+.vb .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.vb .log-strip { margin-top: 14px; border-top: 1px solid var(--rule); padding-top: 12px; }
+.vb .log-strip .label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+.vb .log-strip .line {
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.55; color: var(--ink-soft);
+}
+.vb .log-strip .line .t { color: var(--ink-faint); }
+
+.vb .setup-empty {
+  padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.vb .setup-empty .field + .field { margin-top: 0; }
+.vb .setup-empty h3 {
+  font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--ink);
+}
+.vb .setup-empty p { color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   VARIANT C — Run-Centric Hero
+   Big "current run" hero, jobs list below, settings tucked.
+   ───────────────────────────────────────────────────────────────────── */
+.vc .hero {
+  padding: 22px 22px 20px;
+  border-bottom: 1px solid var(--rule);
+  background: linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.vc .hero .eyebrow { margin-bottom: 10px; }
+.vc .hero .title {
+  font-family: var(--serif); font-weight: 500; font-size: 28px; line-height: 1.05;
+  letter-spacing: -0.02em; color: var(--ink);
+}
+.vc .hero .title em { font-style: italic; font-weight: 400; }
+.vc .hero .sub { margin-top: 6px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.55; }
+.vc .hero .figure-row {
+  margin-top: 18px;
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+}
+.vc .hero .figure {
+  font-family: var(--serif); font-weight: 500; font-size: 56px; line-height: 0.9;
+  letter-spacing: -0.03em; color: var(--ink);
+}
+.vc .hero .figure .of {
+  color: var(--ink-faint); font-style: italic; font-size: 24px; margin-left: 6px;
+}
+.vc .hero .figure-meta {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.vc .hero .figure-meta strong { color: var(--ink); font-weight: 600; }
+.vc .hero .progress { margin-top: 14px; height: 4px; background: var(--paper-warm); border-radius: 2px; overflow: hidden; }
+.vc .hero .progress > span { display: block; height: 100%; background: var(--gold); }
+.vc .hero .progress-meta { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.vc .hero .anon-note {
+  margin-top: 14px; padding: 9px 13px; border-radius: 7px;
+  background: rgba(255,255,255,0.55); border-left: 2px solid var(--gold-deep);
+  font-size: 11.5px; color: var(--ink-soft); line-height: 1.5;
+}
+.vc .hero .actions { margin-top: 16px; display: flex; gap: 10px; }
+
+.vc .queue { padding: 14px 20px 4px; }
+.vc .queue .label {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-faint); margin-bottom: 8px;
+}
+.vc .queue ul { list-style: none; margin: 0; padding: 0; }
+.vc .queue li {
+  display: grid; grid-template-columns: 22px 1fr auto;
+  align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--rule);
+}
+.vc .queue li:last-child { border-bottom: 0; }
+.vc .queue li .num {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em; color: var(--ink-faint);
+}
+.vc .queue li .info .nm { font-family: var(--serif); font-weight: 500; font-size: 13.5px; color: var(--ink); }
+.vc .queue li .info .meta { font-family: var(--mono); font-size: 9.5px; color: var(--ink-soft); letter-spacing: 0.05em; margin-top: 1px; }
+.vc .footer-row {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--rule);
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--paper-2);
+}
+.vc .footer-row .settings-link {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-soft);
+  background: transparent; border: 0; padding: 0;
+}
+.vc .footer-row .settings-link:hover { color: var(--ink); }
+.vc .footer-row .version {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--ink-faint);
+}
+
+.vc .setup-empty {
+  padding: 22px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.vc .setup-empty h2 { font-family: var(--serif); font-weight: 500; font-size: 22px; color: var(--ink); letter-spacing: -0.012em; }
+.vc .setup-empty p { color: var(--ink-soft); font-size: 12.5px; line-height: 1.55; }
+
+/* Show/hide states */
+.popup [data-state-show] { display: none; }
+.popup[data-state="idle"] [data-state-show~="idle"],
+.popup[data-state="running"] [data-state-show~="running"],
+.popup[data-state="done"] [data-state-show~="done"] { display: block; }
+.popup[data-state="idle"] [data-state-show~="idle"][data-flex],
+.popup[data-state="running"] [data-state-show~="running"][data-flex],
+.popup[data-state="done"] [data-state-show~="done"][data-flex] { display: flex; }
+.popup[data-state="idle"] [data-state-show~="idle"][data-grid],
+.popup[data-state="running"] [data-state-show~="running"][data-grid],
+.popup[data-state="done"] [data-state-show~="done"][data-grid] { display: grid; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="eyebrow">Sketch 001 · Dashboard Layout</div>
+  <h1>Three layouts in the <em>club editorial</em> language</h1>
+  <p>Same visual vocabulary as the LinkedIn DM Assistant — paper, ink, gold, Newsreader serif.
+     The information architecture differs across A, B, and C. Use the state toggle to flip all three popups
+     between idle / running / done.</p>
+</div>
+
+<div class="toolbar">
+  <div class="group">
+    <span class="label">State</span>
+    <button data-state="idle" aria-pressed="false">Idle</button>
+    <button data-state="running" aria-pressed="true">Running</button>
+    <button data-state="done" aria-pressed="false">Done</button>
+  </div>
+  <div class="group" style="margin-left:auto">
+    <span class="label">Width</span>
+    <span style="font-family:var(--mono); font-size:11px; color:var(--ink-soft)">400px popup · native Chrome size</span>
+  </div>
+</div>
+
+<div class="variant-row">
+
+  <!-- ═════════════════════════════════════════════════════════════════
+       VARIANT A — Linear Stepper
+       ═════════════════════════════════════════════════════════════════ -->
+  <div class="variant-card">
+    <div class="caption">
+      <span class="tag">Variant A</span>
+      <span class="name">Linear Stepper</span>
+      <span class="desc">One concern at a time. Sheet → Filters → Run → Results.
+        Best for first-time and infrequent users — never makes you guess where to look.</span>
+    </div>
+
+    <div class="popup va" data-state="running">
+      <header class="mast">
+        <div class="brand">
+          <span class="mark">O</span>
+          <div class="brand-text">
+            <div class="name">Sales Nav Scraper</div>
+            <div class="sub">Ortus · Lead Search</div>
+          </div>
+        </div>
+        <span class="live" data-state="standby" data-state-show="idle">
+          <span class="dot"></span>Standby
+        </span>
+        <span class="live" data-state="running" data-state-show="running">
+          <span class="dot"></span>Running · p52
+        </span>
+        <span class="live" data-state="done" data-state-show="done">
+          <span class="dot"></span>Done
+        </span>
+      </header>
+
+      <!-- Step rail (idle only) -->
+      <div class="step-rail" data-state-show="idle" data-flex>
+        <span class="step done"><span class="num">1</span>Sheet</span>
+        <span class="step active"><span class="num">2</span>Filters</span>
+        <span class="step"><span class="num">3</span>Run</span>
+        <span class="step"><span class="num">4</span>Results</span>
+      </div>
+
+      <!-- Idle: setup stage (filters step) -->
+      <section class="stage" data-state-show="idle">
+        <span class="eyebrow">Step 2 of 4</span>
+        <h2>Set the search</h2>
+        <p class="lede">Paste a Sales Navigator search URL. We'll batch through every page and write to your sheet.</p>
+        <div class="field">
+          <label class="field-label">Sales Nav URL</label>
+          <input type="url" placeholder="https://www.linkedin.com/sales/search/people?…" value="https://www.linkedin.com/sales/search/people?keywords=cmo&geoIncluded=…">
+          <div class="helper">1,884 leads · 76 pages</div>
+        </div>
+        <div class="field">
+          <label class="field-label">Tab name</label>
+          <input type="text" value="Q2 CMOs · UK">
+        </div>
+        <div class="actions">
+          <button class="cta">Continue<span class="pod">→</span></button>
+          <button class="ghost">Back</button>
+        </div>
+      </section>
+
+      <!-- Running: live progress -->
+      <section class="run-summary" data-state-show="running">
+        <span class="eyebrow">Now scraping</span>
+        <div style="margin-top:8px">
+          <div class="name">Q2 CMOs · UK</div>
+          <div class="sub">1,884 leads · CMO keyword · United Kingdom</div>
+        </div>
+        <div class="stat-strip">
+          <div class="stat"><div class="v">1,275</div><div class="l">collected</div></div>
+          <div class="stat"><div class="v">52<span style="color:var(--ink-faint);font-size:14px">/76</span></div><div class="l">pages</div></div>
+          <div class="stat"><div class="v">2</div><div class="l">anonymous</div></div>
+        </div>
+        <div class="progress"><span style="width:68%"></span></div>
+        <div class="progress-meta">
+          <span>68%</span><span>~9 min remaining</span>
+        </div>
+        <div class="anon-note">
+          <strong>2 leads hidden.</strong> Out-of-network or privacy-restricted profiles your account can't see. Skipped, not retried.
+        </div>
+        <div class="running-actions">
+          <button class="ghost">Pause</button>
+          <button class="ghost" style="border-color:rgba(139,58,46,0.4); color:var(--err)">Stop</button>
+          <a class="ghost" style="text-decoration:none; display:inline-flex; align-items:center" href="#">Open sheet ↗</a>
+        </div>
+      </section>
+
+      <!-- Done -->
+      <section class="done-card" data-state-show="done">
+        <span class="badge"><span style="width:5px;height:5px;border-radius:50%;background:var(--ok);display:inline-block"></span>Complete</span>
+        <h2>Q2 CMOs · UK</h2>
+        <div class="figure">1,882<span class="of">of 1,884</span></div>
+        <div class="meta-row">
+          <span class="meta">Pages <strong>76</strong></span>
+          <span class="meta">Anonymous <strong>2</strong></span>
+          <span class="meta">Duration <strong>14m 22s</strong></span>
+        </div>
+        <div class="actions">
+          <button class="cta">Open sheet<span class="pod">↗</span></button>
+          <button class="ghost">Run another</button>
+        </div>
+        <div class="sheet-link">docs.google.com/spreadsheets/d/1RfRDb…ksYNkho</div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════
+       VARIANT B — Two-Pane Editorial
+       ═════════════════════════════════════════════════════════════════ -->
+  <div class="variant-card">
+    <div class="caption">
+      <span class="tag">Variant B</span>
+      <span class="name">Two-Pane Editorial</span>
+      <span class="desc">Sidebar of jobs (the "ledger"), main pane is the active run with live log.
+        Best for power users who queue multiple searches and want to switch between them.</span>
+    </div>
+
+    <div class="popup vb" data-state="running">
+      <header class="mast">
+        <div class="brand">
+          <span class="mark">O</span>
+          <div class="brand-text">
+            <div class="name">Sales Nav Scraper</div>
+            <div class="sub">Ortus · Ledger</div>
+          </div>
+        </div>
+        <span class="live" data-state="standby" data-state-show="idle">
+          <span class="dot"></span>Standby
+        </span>
+        <span class="live" data-state="running" data-state-show="running">
+          <span class="dot"></span>3 jobs
+        </span>
+        <span class="live" data-state="done" data-state-show="done">
+          <span class="dot"></span>Done
+        </span>
+      </header>
+
+      <div class="layout" data-state-show="running done idle" data-grid>
+        <aside class="sidebar">
+          <div class="ledger-label">Ledger</div>
+          <ul>
+            <li>
+              <div class="row"><span class="num">01</span><span class="nm">CMOs · UK</span></div>
+              <div class="sub">Done · 2,300</div>
+            </li>
+            <li class="active">
+              <div class="row"><span class="num">02</span><span class="nm">Q2 CMOs · UK</span></div>
+              <div class="sub" data-state-show="running">Running · p52</div>
+              <div class="sub" data-state-show="done">Done · 1,882</div>
+              <div class="sub" data-state-show="idle">Ready · 1,884 est</div>
+            </li>
+            <li>
+              <div class="row"><span class="num">03</span><span class="nm">VPs Marketing</span></div>
+              <div class="sub">Pending · 412 est</div>
+            </li>
+          </ul>
+          <button class="add">＋ Add job</button>
+        </aside>
+
+        <main class="main">
+          <!-- Idle / setup -->
+          <div data-state-show="idle">
+            <div class="lede-row">
+              <div>
+                <span class="eyebrow">Job 02</span>
+                <div class="job-name" style="margin-top:6px">Q2 CMOs · UK</div>
+                <div class="job-sub">1,884 leads est. · ready to start</div>
+              </div>
+              <span class="chip pending"><span class="dot"></span>Ready</span>
+            </div>
+            <label class="field-label" style="margin-top:14px">Sales Nav URL</label>
+            <input type="url" value="https://linkedin.com/sales/search/people?keywords=cmo…">
+            <label class="field-label" style="margin-top:12px">Sheet tab</label>
+            <input type="text" value="Q2 CMOs · UK">
+            <div class="actions">
+              <button class="cta">Start<span class="pod">▶</span></button>
+              <button class="ghost">Edit</button>
+            </div>
+          </div>
+
+          <!-- Running -->
+          <div data-state-show="running">
+            <div class="lede-row">
+              <div>
+                <span class="eyebrow">Job 02 · Running</span>
+                <div class="job-name" style="margin-top:6px">Q2 CMOs · UK</div>
+                <div class="job-sub">CMO keyword · United Kingdom · 1,884 leads</div>
+              </div>
+              <span class="chip running"><span class="dot"></span>p52 / 76</span>
+            </div>
+            <div class="stat-strip">
+              <div class="stat"><div class="v">1,275</div><div class="l">leads</div></div>
+              <div class="stat"><div class="v">52</div><div class="l">pages</div></div>
+              <div class="stat"><div class="v">2</div><div class="l">anonymous</div></div>
+            </div>
+            <div class="progress"><span style="width:68%"></span></div>
+            <div class="progress-meta"><span>68%</span><span>~9m left</span></div>
+            <div class="anon-note">
+              2 leads hidden — out-of-network. Skipped silently, not retried.
+            </div>
+            <div class="actions">
+              <button class="ghost">Pause</button>
+              <button class="ghost" style="border-color:rgba(139,58,46,0.4); color:var(--err)">Stop</button>
+            </div>
+            <div class="log-strip">
+              <div class="label">Live log</div>
+              <div class="line"><span class="t">10:43:38</span> Page 52: 24 leads (1 anonymous, hidden)</div>
+              <div class="line"><span class="t">10:43:24</span> Page 51: 25 leads</div>
+              <div class="line"><span class="t">10:43:09</span> Page 50: 25 leads</div>
+            </div>
+          </div>
+
+          <!-- Done -->
+          <div data-state-show="done">
+            <div class="lede-row">
+              <div>
+                <span class="eyebrow">Job 02 · Complete</span>
+                <div class="job-name" style="margin-top:6px">Q2 CMOs · UK</div>
+                <div class="job-sub">14m 22s · 76 pages</div>
+              </div>
+              <span class="chip done"><span class="dot"></span>Done</span>
+            </div>
+            <div class="stat-strip">
+              <div class="stat"><div class="v">1,882</div><div class="l">collected</div></div>
+              <div class="stat"><div class="v">76</div><div class="l">pages</div></div>
+              <div class="stat"><div class="v">2</div><div class="l">anonymous</div></div>
+            </div>
+            <div class="actions">
+              <button class="cta">Open sheet<span class="pod">↗</span></button>
+              <button class="ghost">Next job</button>
+            </div>
+            <div class="log-strip">
+              <div class="label">Last lines</div>
+              <div class="line"><span class="t">10:57:50</span> Job done: 1,882 leads, 76 pages (2 anonymous)</div>
+              <div class="line"><span class="t">10:57:48</span> Wrote back link to row 4</div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════
+       VARIANT C — Run-Centric Hero
+       ═════════════════════════════════════════════════════════════════ -->
+  <div class="variant-card">
+    <div class="caption">
+      <span class="tag">Variant C</span>
+      <span class="name">Run-Centric Hero</span>
+      <span class="desc">The current run owns the popup. Big numbers, big serif, the rest tucked underneath.
+        Best when most sessions are one search at a time — feels more like a product, less like a control panel.</span>
+    </div>
+
+    <div class="popup vc" data-state="running">
+      <header class="mast">
+        <div class="brand">
+          <span class="mark">O</span>
+          <div class="brand-text">
+            <div class="name">Sales Nav Scraper</div>
+            <div class="sub">Ortus · v3.7.2</div>
+          </div>
+        </div>
+        <span class="live" data-state="standby" data-state-show="idle">
+          <span class="dot"></span>Standby
+        </span>
+        <span class="live" data-state="running" data-state-show="running">
+          <span class="dot"></span>Live
+        </span>
+        <span class="live" data-state="done" data-state-show="done">
+          <span class="dot"></span>Done
+        </span>
+      </header>
+
+      <!-- Idle hero -->
+      <section class="hero" data-state-show="idle">
+        <span class="eyebrow">Ready</span>
+        <h2 class="title">Paste a search.<br><em>Get the leads.</em></h2>
+        <p class="sub">Drop a Sales Nav URL below. We'll batch every page into your sheet. Hidden profiles are skipped; the rest are yours.</p>
+        <label class="field-label" style="margin-top:16px">Sales Nav URL</label>
+        <input type="url" placeholder="https://www.linkedin.com/sales/search/people?…">
+        <label class="field-label" style="margin-top:12px">Sheet tab</label>
+        <input type="text" placeholder="e.g. Q2 CMOs · UK">
+        <div class="actions">
+          <button class="cta">Start scrape<span class="pod">▶</span></button>
+          <button class="ghost">Last run</button>
+        </div>
+      </section>
+
+      <!-- Running hero -->
+      <section class="hero" data-state-show="running">
+        <span class="eyebrow">Now scraping</span>
+        <h2 class="title" style="font-size:22px">Q2 CMOs · UK</h2>
+        <p class="sub" style="margin-top:4px">CMO · United Kingdom</p>
+        <div class="figure-row">
+          <div class="figure">1,275<span class="of">of 1,884</span></div>
+          <div class="figure-meta">
+            Page <strong>52</strong> of 76<br>
+            <span style="color:var(--ink-faint)">~9 min remaining</span>
+          </div>
+        </div>
+        <div class="progress"><span style="width:68%"></span></div>
+        <div class="progress-meta"><span>68% complete</span><span>2 anonymous · skipped</span></div>
+        <div class="anon-note">
+          2 leads hidden from your account. Out-of-network or privacy-restricted — not retried.
+        </div>
+        <div class="actions">
+          <button class="ghost">Pause</button>
+          <button class="ghost" style="border-color:rgba(139,58,46,0.4); color:var(--err)">Stop</button>
+          <a class="ghost" style="text-decoration:none; display:inline-flex; align-items:center" href="#">Open sheet ↗</a>
+        </div>
+      </section>
+
+      <!-- Done hero -->
+      <section class="hero" data-state-show="done">
+        <span class="eyebrow">Complete</span>
+        <h2 class="title" style="font-size:22px">Q2 CMOs · UK</h2>
+        <p class="sub" style="margin-top:4px">Finished in 14m 22s</p>
+        <div class="figure-row">
+          <div class="figure">1,882<span class="of">of 1,884</span></div>
+          <div class="figure-meta">
+            Pages <strong>76</strong><br>
+            Anonymous <strong>2</strong>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="cta">Open sheet<span class="pod">↗</span></button>
+          <button class="ghost">Run another</button>
+        </div>
+      </section>
+
+      <!-- Job queue (always visible below hero) -->
+      <div class="queue" data-state-show="idle running done">
+        <div class="label">Recent jobs</div>
+        <ul>
+          <li>
+            <span class="num">03</span>
+            <div class="info"><div class="nm">VPs Marketing · DACH</div><div class="meta">Pending · 412 est</div></div>
+            <span class="chip pending"><span class="dot"></span>Pending</span>
+          </li>
+          <li>
+            <span class="num">02</span>
+            <div class="info"><div class="nm">Q2 CMOs · UK</div><div class="meta" data-state-show="idle">Ready · 1,884 est</div><div class="meta" data-state-show="running">52 / 76 pages · 1,275 leads</div><div class="meta" data-state-show="done">1,882 leads · 76 pages · 2 anonymous</div></div>
+            <span class="chip pending" data-state-show="idle"><span class="dot"></span>Ready</span>
+            <span class="chip running" data-state-show="running"><span class="dot"></span>Running</span>
+            <span class="chip done" data-state-show="done"><span class="dot"></span>Done</span>
+          </li>
+          <li>
+            <span class="num">01</span>
+            <div class="info"><div class="nm">CMOs · US Bay Area</div><div class="meta">2,300 leads · 14m 22s</div></div>
+            <span class="chip done"><span class="dot"></span>Done</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="footer-row">
+        <button class="settings-link">Settings ↗</button>
+        <span class="version">v3.7.2 · Ortus</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var btns = document.querySelectorAll('.toolbar button[data-state]');
+  var popups = document.querySelectorAll('.popup');
+  btns.forEach(function(b){
+    b.addEventListener('click', function(){
+      var s = b.getAttribute('data-state');
+      btns.forEach(function(bb){ bb.setAttribute('aria-pressed', bb===b ? 'true' : 'false'); });
+      popups.forEach(function(p){ p.setAttribute('data-state', s); });
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Sales Nav Batch Scraper",
-  "version": "3.8.4",
-  "description": "Trim redundant post-nav/post-injection settles — waitForResults already handles DOM readiness; pageDelay anti-detection layer untouched",
+  "version": "3.14.1",
+  "description": "Per-page diagnostic logging to a hardcoded __logs tab (raw count, after-dedup, ms-extract, tabVisible, retry path) so we can diagnose lead-skipping without colleague logs. UI trim: removed redundant step eyebrows + idle Standby badge. Apps Script: 'Ortus Tools' menu adds Delete-all-other-tabs + Clear-log-tab. Headers updated: First Phone Validation, Secondary Emails, Ortus Membership, Premium Account, Linkedin First Connections, Additional email addresses (blank).",
   "permissions": [
     "activeTab",
     "tabs",

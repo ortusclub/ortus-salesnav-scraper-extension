@@ -115,15 +115,16 @@ document.addEventListener('DOMContentLoaded', function(){
     chrome.runtime.sendMessage({action:'setCornerWindow', corner: newVal});
   });
 
-  /* ── Shared status pill — auto-detected from the sheet, not user-clickable ── */
+  /* ── Shared status pill + loud alarm — auto-detected from the sheet ── */
   var sharedPill = $('toggle-shared-pill');
   var sharedLabel = $('shared-state-label');
+  var shareAlarm = $('alarm-share');
   function applySharedState(state, reason){
     /* state: 'on' | 'off' | 'checking' | 'idle' */
     if (!sharedPill || !sharedLabel) return;
     sharedPill.setAttribute('aria-pressed', state === 'on' ? 'true' : 'false');
     sharedPill.setAttribute('data-state', state);
-    sharedLabel.textContent = state === 'on' ? 'On'
+    sharedLabel.textContent = state === 'on' ? 'OK'
       : state === 'checking' ? '…'
       : state === 'idle' ? '—'
       : 'Off';
@@ -131,12 +132,13 @@ document.addEventListener('DOMContentLoaded', function(){
     else sharedPill.title = state === 'on' ? 'Sheet shared as Anyone with the link · Editor'
       : state === 'idle' ? 'Paste a sheet URL to verify sharing'
       : 'Not shared as Anyone with the link · Editor';
+    if (shareAlarm) shareAlarm.classList.toggle('hidden', state !== 'off');
     var connect = $('btn-connect-sheet');
     if (connect) connect.disabled = (state !== 'on');
   }
   if (sharedPill && sharedLabel) {
     sharedPill.style.cursor = 'default';
-    /* No click handler — pill is purely a status indicator. */
+    /* No click handler — pill is purely a status indicator. Alarm is non-interactive. */
     applySharedState('idle');
   }
 
@@ -201,13 +203,85 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  /* ── Open Chrome performance settings ── */
-  var perfBtn = $('btn-open-perf-settings');
-  if (perfBtn) {
-    perfBtn.addEventListener('click', function(){
-      chrome.tabs.create({ url: 'chrome://settings/performance' });
+  /* ── Open activity log (logs.html) ── */
+  var logsBtn = $('btn-open-logs');
+  if (logsBtn) {
+    logsBtn.addEventListener('click', function(){
+      chrome.tabs.create({ url: chrome.runtime.getURL('logs.html') });
     });
   }
+
+  /* ── Keep-LinkedIn-Awake preflight: two-step nudge before any start/resume action.
+     Step 1 (initial): "Open settings" button deep-links to chrome://settings/performance.
+       This sets ortus_memsaver_opened=true so the next time the popup opens the banner
+       advances to step 2 — but does NOT yet ack. They could've forgotten to click Add.
+     Step 2 (confirm): "Yes, I added it ✓" button persists ortus_memsaver_ack=true and
+       hides every banner forever on this machine.
+     Banners are purely informational; Start is never disabled. */
+  function paintPreflights(opened, acked){
+    var banners = document.querySelectorAll('.preflight-memsaver');
+    for (var i = 0; i < banners.length; i++) {
+      var b = banners[i];
+      if (acked) { b.classList.add('hidden'); continue; }
+      b.classList.remove('hidden');
+      b.setAttribute('data-state', opened ? 'confirm' : 'initial');
+    }
+  }
+  /* Storage keys are namespaced under v2 because v3.9.0 used the same names with
+   * different semantics (auto-ack on first click). Reading the old keys would
+   * silently hide every banner for users who clicked once in v3.9.0. */
+  function loadPreflightState(){
+    chrome.storage.local.get(['ortus_lkd_keepalive_opened_v2','ortus_lkd_keepalive_ack_v2'], function(d){
+      paintPreflights(!!(d && d.ortus_lkd_keepalive_opened_v2), !!(d && d.ortus_lkd_keepalive_ack_v2));
+    });
+    /* Best-effort cleanup of v3.9.0 stale keys (no-op if they don't exist) */
+    chrome.storage.local.remove(['ortus_memsaver_opened','ortus_memsaver_ack']);
+  }
+  loadPreflightState();
+  document.querySelectorAll('.preflight-open').forEach(function(b){
+    b.addEventListener('click', function(){
+      chrome.tabs.create({ url: 'chrome://settings/performance' });
+      chrome.storage.local.set({ortus_lkd_keepalive_opened_v2: true}, function(){
+        paintPreflights(true, false);
+      });
+    });
+  });
+  document.querySelectorAll('.preflight-confirm').forEach(function(b){
+    b.addEventListener('click', function(){
+      chrome.storage.local.set({ortus_lkd_keepalive_ack_v2: true}, function(){
+        paintPreflights(true, true);
+      });
+    });
+  });
+  /* Click-to-copy pill (e.g. "www.linkedin.com") inside every preflight banner */
+  document.querySelectorAll('.preflight-copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var text = btn.getAttribute('data-copy') || '';
+      var hint = btn.querySelector('.copy-hint');
+      var origHint = hint ? hint.textContent : '';
+      var flash = function(){
+        btn.classList.add('copied');
+        if (hint) hint.textContent = 'Copied';
+        setTimeout(function(){
+          btn.classList.remove('copied');
+          if (hint) hint.textContent = origHint || 'Copy';
+        }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(flash).catch(function(){
+          var ta=document.createElement('textarea'); ta.value=text;
+          document.body.appendChild(ta); ta.select();
+          try{document.execCommand('copy'); flash();}catch(e){}
+          document.body.removeChild(ta);
+        });
+      } else {
+        var ta=document.createElement('textarea'); ta.value=text;
+        document.body.appendChild(ta); ta.select();
+        try{document.execCommand('copy'); flash();}catch(e){}
+        document.body.removeChild(ta);
+      }
+    });
+  });
 
   /* ── Settings view toggle ── */
   $('btn-settings-toggle').addEventListener('click', function(){
@@ -233,17 +307,17 @@ document.addEventListener('DOMContentLoaded', function(){
   $('btn-csv').addEventListener('click', downloadCSV);
   $('btn-again').addEventListener('click', scrapeAgain);
   $('btn-resume').addEventListener('click', resumeSingle);
-  $('btn-discard').addEventListener('click', discardSingle);
+  /* btn-discard now goes through confirm-strip (wireConfirmStrip below) */
 
   /* ── Mode switch buttons ── */
   $('btn-go-single-link').addEventListener('click', function(){
     currentTab = 'single';
     initSingle();
   });
-  $('btn-back-to-welcome').addEventListener('click', function(){
-    currentTab = 'batch';
-    showView('batch-setup');
-  });
+  /* btn-back-to-welcome removed — masthead Single/Batch toggle replaces it.
+     Keep the lookup null-safe for future-proofing. */
+  var bw = $('btn-back-to-welcome');
+  if (bw) bw.addEventListener('click', function(){ currentTab = 'batch'; showView('batch-setup'); });
 
   /* ── Batch wizard handlers ── */
   $('btn-connect-sheet').addEventListener('click', connectSheet);
@@ -262,12 +336,12 @@ document.addEventListener('DOMContentLoaded', function(){
     saveWizard();
   });
   $('btn-start-batch').addEventListener('click', startBatch);
-  $('btn-stop-batch').addEventListener('click', stopBatch);
+  /* btn-stop-batch now goes through confirm-strip (wireConfirmStrip below) */
   $('btn-pause-batch').addEventListener('click', togglePauseBatch);
   $('btn-recover-batch').addEventListener('click', recoverBatch);
   $('btn-batch-again').addEventListener('click', batchAgain);
   $('btn-resume-batch').addEventListener('click', resumeBatch);
-  $('btn-discard-batch').addEventListener('click', discardBatch);
+  /* btn-discard-batch now goes through confirm-strip (wireConfirmStrip below) */
 
   /* ── Dynamic listeners ── */
   $('sel-url-col').addEventListener('change', function(){updateColPreview(); saveWizard();});
@@ -288,12 +362,474 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   });
 
+  /* ── Masthead Single / Batch toggle (replaces hidden ghost button) ── */
+  var modeSingle = $('mode-single');
+  var modeBatch = $('mode-batch');
+  function setMode(target, persist){
+    if (modeSingle) modeSingle.setAttribute('aria-pressed', target === 'single' ? 'true' : 'false');
+    if (modeBatch) modeBatch.setAttribute('aria-pressed', target === 'batch' ? 'true' : 'false');
+    if (persist) chrome.storage.local.set({ortus_last_mode: target});
+  }
+  if (modeSingle) {
+    modeSingle.addEventListener('click', function(){
+      if (currentView && (currentView.indexOf('single-progress') === 0 || currentView.indexOf('batch-running') === 0)) return; /* don't switch mid-run */
+      setMode('single', true);
+      currentTab = 'single';
+      initSingle();
+    });
+  }
+  if (modeBatch) {
+    modeBatch.addEventListener('click', function(){
+      if (currentView && (currentView.indexOf('single-progress') === 0 || currentView.indexOf('batch-running') === 0)) return;
+      setMode('batch', true);
+      currentTab = 'batch';
+      showView('batch-setup');
+    });
+  }
+
+  /* ── Paste-a-link single scrape (view-single-wrong's new flow) ── */
+  var pasteBtn = $('btn-paste-start');
+  if (pasteBtn) {
+    pasteBtn.addEventListener('click', async function(){
+      var url = ($('input-paste-salesnav') ? $('input-paste-salesnav').value.trim() : '');
+      var sheet = ($('input-paste-sheet-url') ? $('input-paste-sheet-url').value.trim() : '');
+      var name = ($('input-paste-sheet-name') ? $('input-paste-sheet-name').value.trim() : '') || 'Sales Nav Scrape';
+      if (!url || url.indexOf('linkedin.com/sales/') === -1) { flash('input-paste-salesnav'); return; }
+      if (!sheet || sheet.indexOf('docs.google.com/spreadsheets') === -1) { flash('input-paste-sheet-url'); return; }
+      var orig = pasteBtn.innerHTML;
+      pasteBtn.disabled = true;
+      pasteBtn.innerHTML = 'Opening Sales Nav…<span class="pod">…</span>';
+      try {
+        /* Open the URL in a new tab and wait for it to load before handing tabId to the scraper. */
+        var newTab = await new Promise(function(res){
+          chrome.tabs.create({url:url, active:false}, function(t){ res(t); });
+        });
+        await new Promise(function(res){
+          var deadline = Date.now() + 25000;
+          function tick(){
+            chrome.tabs.get(newTab.id, function(t){
+              if (chrome.runtime.lastError || !t) { res(); return; }
+              if (t.status === 'complete') { res(); return; }
+              if (Date.now() > deadline) { res(); return; }
+              setTimeout(tick, 250);
+            });
+          }
+          tick();
+        });
+        chrome.storage.sync.set({lastSheetUrl: sheet, lastSheetName: name});
+        var cfg = { tabId: newTab.id, startPage: 1, totalPages: 0, totalResults: 0, sheetUrl: sheet, sheetName: name, dedup: dedupState.paste.on };
+        var r = await sendBG('startScrape', {config: cfg});
+        if (r && r.ok) { showView('single-progress'); startPoll(); }
+        else { alert(r && r.error ? r.error : 'Could not start scrape'); }
+      } finally {
+        pasteBtn.disabled = false;
+        pasteBtn.innerHTML = orig;
+      }
+    });
+  }
+
+  /* ── Dedup toggle state — per-launch, default ON.
+     Exposed on window so top-level functions (initSingle, startScrape,
+     confirmBatchConfig, startBatch, paste-flow handler) can read/refresh it. */
+  window.dedupState = {
+    paste: { on: true, count: 0, hasIdCol: false, hasUrlCol: false, error: null },
+    single: { on: true, count: 0, hasIdCol: false, hasUrlCol: false, error: null },
+    batch: { on: true, count: 0, hasIdCol: false, hasUrlCol: false, error: null }
+  };
+  var dedupState = window.dedupState;
+
+  /* Per-view request sequence counters — drop stale previewDedup responses
+     when a newer request has been issued (prevents out-of-order races). */
+  var __dedupReqSeq = { paste: 0, single: 0, batch: 0 };
+
+  function renderDedupToggle(which) {
+    var s = dedupState[which];
+    var toggle = $('dedup-toggle-' + which);
+    var note = $('dedup-note-' + which);
+    var sw = $('dedup-switch-' + which);
+    var label = $('dedup-label-' + which);
+    var count = $('dedup-count-' + which);
+    if (!toggle || !note) return;
+    if (s.error) {
+      toggle.classList.add('hidden');
+      note.classList.remove('hidden');
+      note.textContent = "Couldn't check for duplicates · running anyway";
+      return;
+    }
+    if (!s.hasIdCol && !s.hasUrlCol && s.count === 0) {
+      toggle.classList.add('hidden');
+      note.classList.add('hidden');
+      return;
+    }
+    if (!s.hasIdCol && !s.hasUrlCol) {
+      toggle.classList.add('hidden');
+      note.classList.remove('hidden');
+      note.textContent = "Can't dedupe — sheet has no LinkedIn Membership ID or Bio column";
+      return;
+    }
+    if (s.count === 0) {
+      toggle.classList.add('hidden');
+      note.classList.add('hidden');
+      return;
+    }
+    toggle.classList.remove('hidden');
+    note.classList.add('hidden');
+    toggle.classList.toggle('off', !s.on);
+    if (sw) {
+      sw.classList.toggle('on', s.on);
+      sw.setAttribute('aria-pressed', s.on ? 'true' : 'false');
+      sw.setAttribute('aria-label', s.on ? 'Skip leads already in this sheet — currently on' : 'Re-scrape everything — currently off');
+    }
+    if (label) {
+      label.innerHTML = s.on
+        ? '<strong>Skip leads already in this sheet</strong>'
+        : '<strong>Re-scrape everything</strong> — dupes will be re-added';
+    }
+    if (count) {
+      count.textContent = s.count.toLocaleString() + ' found';
+    }
+  }
+  function wireDedupSwitch(which) {
+    var sw = $('dedup-switch-' + which);
+    if (!sw) return;
+    sw.addEventListener('click', function() {
+      dedupState[which].on = !dedupState[which].on;
+      renderDedupToggle(which);
+    });
+  }
+  ['paste','single','batch'].forEach(wireDedupSwitch);
+
+  window.refreshDedupForView = async function(which, sheetUrl, tabName) {
+    var seq = ++__dedupReqSeq[which];
+    if (!sheetUrl || !tabName) {
+      dedupState[which] = { on: dedupState[which].on, count: 0, hasIdCol: false, hasUrlCol: false, error: null };
+      renderDedupToggle(which);
+      return;
+    }
+    var r = await sendBG('previewDedup', { sheetUrl: sheetUrl, tabName: tabName });
+    if (seq !== __dedupReqSeq[which]) return;  // stale — newer request was issued
+    if (!r || !r.ok) {
+      dedupState[which] = { on: dedupState[which].on, count: 0, hasIdCol: false, hasUrlCol: false, error: (r && r.error) || 'fetch failed' };
+    } else {
+      dedupState[which] = {
+        on: dedupState[which].on,
+        count: r.count || 0,
+        hasIdCol: !!r.hasIdCol,
+        hasUrlCol: !!r.hasUrlCol,
+        error: null
+      };
+    }
+    renderDedupToggle(which);
+  };
+  var refreshDedupForView = window.refreshDedupForView;
+
+  /* Refresh paste-view dedup preview when sheet URL or tab name changes */
+  var pastePreviewTimer = null;
+  function pastePreview() {
+    var sheet = $('input-paste-sheet-url') ? $('input-paste-sheet-url').value.trim() : '';
+    var tab = ($('input-paste-sheet-name') ? $('input-paste-sheet-name').value.trim() : '') || 'Sales Nav Scrape';
+    if (sheet.indexOf('docs.google.com/spreadsheets') === -1) {
+      dedupState.paste = { on: dedupState.paste.on, count: 0, hasIdCol: false, hasUrlCol: false, error: null };
+      renderDedupToggle('paste');
+      return;
+    }
+    refreshDedupForView('paste', sheet, tab);
+  }
+  ['input-paste-sheet-url','input-paste-sheet-name'].forEach(function(id) {
+    var el = $(id);
+    if (el) el.addEventListener('input', function() {
+      if (pastePreviewTimer) clearTimeout(pastePreviewTimer);
+      pastePreviewTimer = setTimeout(pastePreview, 600);
+    });
+  });
+
+  /* ── Radio-card proxy for #sel-tab-source (hidden state-of-truth) ── */
+  document.querySelectorAll('.radio-stack [role="radio"]').forEach(function(card){
+    card.addEventListener('click', function(){
+      var stack = card.closest('.radio-stack');
+      if (!stack) return;
+      stack.querySelectorAll('[role="radio"]').forEach(function(c){c.setAttribute('aria-checked','false');});
+      card.setAttribute('aria-checked','true');
+      var hiddenSel = $('sel-tab-source');
+      if (hiddenSel) {
+        hiddenSel.value = card.getAttribute('data-value') || 'auto';
+        hiddenSel.dispatchEvent(new Event('change', {bubbles:true}));
+      }
+    });
+  });
+  window.syncRadioCardsFromSelect = function(){
+    var v = $('sel-tab-source') ? $('sel-tab-source').value : 'auto';
+    document.querySelectorAll('.radio-stack [role="radio"]').forEach(function(c){
+      c.setAttribute('aria-checked', c.getAttribute('data-value') === v ? 'true' : 'false');
+    });
+  };
+  /* Re-sync radio cards whenever something else (restore-wizard) writes to the hidden select */
+  if ($('sel-tab-source')) {
+    $('sel-tab-source').addEventListener('change', window.syncRadioCardsFromSelect);
+  }
+
+  /* ── Column-picker listbox helpers (replaces visible <select> for column-pickers) ── */
+  function colLetter(idx){
+    var s = '';
+    var n = idx;
+    while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
+    return s;
+  }
+  function firstPreview(sampleRows, idx){
+    if (!sampleRows) return '';
+    for (var i = 0; i < sampleRows.length; i++) {
+      var v = (sampleRows[i] && sampleRows[i][idx] != null) ? String(sampleRows[i][idx]).trim() : '';
+      if (v) return v;
+    }
+    return '';
+  }
+  /* Render a column listbox driven by a hidden <select>. Each li reflects a header
+     with its column letter, name, and first non-empty preview value. */
+  window.populateColListbox = function(listboxId, hiddenSelectId, headers, sampleRows, opts){
+    var lb = document.getElementById(listboxId);
+    var sel = document.getElementById(hiddenSelectId);
+    if (!lb || !sel) return;
+    opts = opts || {};
+    lb.innerHTML = '';
+    if (opts.includeNone) {
+      var none = document.createElement('li');
+      none.setAttribute('role','option');
+      none.setAttribute('data-value','-1');
+      none.innerHTML = '<span class="col">—</span><span class="nm" style="font-style:italic; color:var(--ink-soft)">'+(opts.noneLabel || "Don't write back")+'</span><span class="preview"></span>';
+      lb.appendChild(none);
+    }
+    headers.forEach(function(h, i){
+      var li = document.createElement('li');
+      li.setAttribute('role','option');
+      li.setAttribute('data-value', String(i));
+      var preview = firstPreview(sampleRows, i);
+      li.innerHTML =
+        '<span class="col">'+colLetter(i)+'</span>'+
+        '<span class="nm">'+(h || '(unnamed)').replace(/[<>]/g,'')+'</span>'+
+        '<span class="preview">'+preview.replace(/[<>]/g,'').slice(0,80)+'</span>';
+      lb.appendChild(li);
+    });
+    /* Selection is driven by the existing hidden <select>'s value. */
+    function syncFromSelect(){
+      var v = sel.value;
+      lb.querySelectorAll('li').forEach(function(li){
+        li.setAttribute('aria-selected', li.getAttribute('data-value') === v ? 'true' : 'false');
+      });
+    }
+    syncFromSelect();
+    /* Click handler — set hidden select's value and dispatch change for legacy listeners */
+    lb.querySelectorAll('li').forEach(function(li){
+      li.addEventListener('click', function(){
+        sel.value = li.getAttribute('data-value');
+        sel.dispatchEvent(new Event('change', {bubbles:true}));
+        syncFromSelect();
+      });
+    });
+    /* Re-sync if someone else writes to the select */
+    sel.addEventListener('change', syncFromSelect);
+  };
+
+  /* ── Discard confirm strips (single + batch interrupted) ── */
+  function wireConfirmStrip(triggerId, stripId, cancelId, confirmId, onConfirm){
+    var trigger = $(triggerId);
+    var strip = $(stripId);
+    if (!trigger || !strip) return;
+    trigger.addEventListener('click', function(e){
+      e.preventDefault();
+      strip.classList.remove('hidden');
+      var confirmBtn = $(confirmId);
+      if (confirmBtn) confirmBtn.focus();
+    });
+    var cancel = $(cancelId);
+    if (cancel) cancel.addEventListener('click', function(){ strip.classList.add('hidden'); });
+    var confirm = $(confirmId);
+    if (confirm) confirm.addEventListener('click', function(){
+      strip.classList.add('hidden');
+      onConfirm();
+    });
+  }
+  wireConfirmStrip('btn-discard','confirm-discard-single','btn-cancel-discard-single','btn-confirm-discard-single', discardSingle);
+  wireConfirmStrip('btn-discard-batch','confirm-discard-batch','btn-cancel-discard-batch','btn-confirm-discard-batch', discardBatch);
+  wireConfirmStrip('btn-stop-batch','confirm-stop-batch','btn-cancel-stop-batch','btn-confirm-stop-batch', stopBatch);
+  /* Single-mode stop already lives in single-progress; keep its current behavior. */
+
+  /* ════════════════════════════════════════════════════════════════════
+     HELP SYSTEM — first-run overlay + coachmark pills
+     Overlay shows ONCE on install (flag: ortus_help_overlay_seen_v1).
+     Pills are always visible; pulse only until any one is dismissed
+     (flag: ortus_help_pill_dismissed_v1). "? Tour" in masthead replays.
+     ════════════════════════════════════════════════════════════════════ */
+  initHelpSystem();
+
   /* SYNC pre-render from localStorage cache — no waiting for getState round-trip.
    * Live state will reconcile within milliseconds via init() below. */
   applyOptimisticState();
 
   init();
 });
+
+function initHelpSystem(){
+  var overlay = $('help-overlay');
+  var stepPill = $('help-step-pill');
+  var backBtn = $('help-back');
+  var nextBtn = $('help-next');
+  var skipBtn = $('help-skip');
+  var replayBtn = $('btn-replay-tour');
+  if (!overlay || !nextBtn) return;
+
+  var slides = overlay.querySelectorAll('.help-slide');
+  var pips = overlay.querySelectorAll('.help-pips span');
+  var total = slides.length;
+  var current = 1;
+
+  function showSlide(n){
+    if (n < 1) n = 1;
+    if (n > total) n = total;
+    current = n;
+    for (var i = 0; i < slides.length; i++){
+      slides[i].setAttribute('data-active', slides[i].getAttribute('data-slide') === String(n) ? 'true' : 'false');
+    }
+    for (var p = 0; p < pips.length; p++){
+      pips[p].setAttribute('data-on', p < n ? 'true' : 'false');
+    }
+    stepPill.textContent = 'Step ' + n + ' of ' + total;
+    backBtn.disabled = (n === 1);
+    nextBtn.textContent = (n === total) ? 'Done ✓' : 'Next →';
+  }
+
+  function openOverlay(){
+    showSlide(1);
+    overlay.setAttribute('data-open', 'true');
+  }
+  function closeOverlay(){
+    overlay.setAttribute('data-open', 'false');
+    chrome.storage.local.set({ortus_help_overlay_seen_v1: true});
+  }
+
+  nextBtn.addEventListener('click', function(){
+    if (current >= total) { closeOverlay(); return; }
+    showSlide(current + 1);
+  });
+  backBtn.addEventListener('click', function(){
+    if (current > 1) showSlide(current - 1);
+  });
+  skipBtn.addEventListener('click', closeOverlay);
+
+  /* "Open fresh blank sheet" — used by overlay CTA + every help bubble */
+  function bindFreshSheetAction(root){
+    var btns = root.querySelectorAll('[data-action="open-fresh-sheet"]');
+    for (var i = 0; i < btns.length; i++){
+      btns[i].addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        chrome.tabs.create({url: 'https://docs.google.com/spreadsheets/create'});
+      });
+    }
+  }
+  bindFreshSheetAction(document);
+
+  /* Replay tour from masthead — does NOT clear the seen flag, just re-opens */
+  if (replayBtn) {
+    replayBtn.addEventListener('click', function(){ openOverlay(); });
+  }
+
+  /* Auto-show overlay on first install */
+  chrome.storage.local.get(['ortus_help_overlay_seen_v1'], function(d){
+    if (!(d && d.ortus_help_overlay_seen_v1)) openOverlay();
+  });
+
+  /* ── Coachmark pills (shared bubble, dynamically positioned) ── */
+  var pills = document.querySelectorAll('.help-pill');
+  var bubble = $('help-bubble');
+  var bubbleBody = $('help-bubble-body');
+
+  function setPulsing(on){
+    for (var i = 0; i < pills.length; i++){
+      if (on) pills[i].setAttribute('data-pulsing', 'true');
+      else pills[i].removeAttribute('data-pulsing');
+    }
+  }
+  function closeBubble(){
+    if (bubble) bubble.setAttribute('data-open', 'false');
+  }
+  function positionBubble(pill){
+    if (!bubble) return;
+    var rect = pill.getBoundingClientRect();
+    var bubbleW = 300;
+    var margin = 10;
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    /* Horizontally: align bubble's right edge with pill's right edge — clamp to viewport */
+    var left = rect.right - bubbleW + 8;
+    if (left < margin) left = margin;
+    if (left + bubbleW > vw - margin) left = vw - margin - bubbleW;
+    /* Vertically: prefer below pill; flip above if not enough room */
+    var top = rect.bottom + 10;
+    var spaceBelow = vh - rect.bottom;
+    var bubbleH = bubble.offsetHeight || 240;  /* estimate before render */
+    if (spaceBelow < bubbleH + margin) {
+      top = rect.top - bubbleH - 10;
+      bubble.setAttribute('data-arrow', 'bottom');
+    } else {
+      bubble.setAttribute('data-arrow', 'top');
+    }
+    if (top < margin) top = margin;
+    bubble.style.left = left + 'px';
+    bubble.style.top = top + 'px';
+  }
+  function setBubbleContentFor(pill){
+    if (!bubbleBody) return;
+    var ctx = pill.getAttribute('data-help-context');
+    if (ctx === 'read-write') {
+      bubbleBody.innerHTML = 'Set it to <strong>Anyone with link · Editor</strong> so this tool can read your URLs and write the result link back.';
+    } else {
+      bubbleBody.innerHTML = 'Set it to <strong>Anyone with link · Editor</strong> so this tool can write results into it.';
+    }
+  }
+
+  chrome.storage.local.get(['ortus_help_pill_dismissed_v1'], function(d){
+    var dismissed = !!(d && d.ortus_help_pill_dismissed_v1);
+    setPulsing(!dismissed);
+  });
+
+  pills.forEach(function(pill){
+    pill.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      var isOpenForThis = bubble && bubble.getAttribute('data-open') === 'true'
+                         && bubble.getAttribute('data-current-pill') === (pill.id || pill.getAttribute('data-help'));
+      closeBubble();
+      if (!isOpenForThis && bubble) {
+        setBubbleContentFor(pill);
+        bubble.setAttribute('data-current-pill', pill.id || pill.getAttribute('data-help'));
+        bubble.setAttribute('data-open', 'true');
+        /* Render once to get height, then re-position with accurate measurements */
+        positionBubble(pill);
+        requestAnimationFrame(function(){ positionBubble(pill); });
+      }
+      /* First-ever pill engagement: stop pulsing forever */
+      setPulsing(false);
+      chrome.storage.local.set({ortus_help_pill_dismissed_v1: true});
+    });
+  });
+
+  /* Bubble close button */
+  var closeBtn = $('help-bubble-close');
+  if (closeBtn) closeBtn.addEventListener('click', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    closeBubble();
+  });
+
+  /* Click outside the bubble (or pill) closes it */
+  document.addEventListener('click', function(e){
+    if (e.target.closest('.help-bubble') || e.target.closest('.help-pill')) return;
+    closeBubble();
+  });
+
+  /* Reposition on resize/scroll while bubble is open */
+  window.addEventListener('resize', function(){ closeBubble(); });
+}
 
 /* ═════════════════════════════════════════════════════════════════════
    FAST-REOPEN CACHE — sync localStorage so the popup paints the running
@@ -403,25 +939,36 @@ async function init(){
   var restored = await restoreWizard();
   if (restored) return;
 
-  /* Default: detect Sales Nav tab */
-  var tab = await sendBG('checkCurrentTab');
-  if (tab && tab.ok) {
-    /* Default to batch-setup but reveal the "scrape this tab" affordance */
-    currentTab = 'batch';
-    showView('batch-setup');
-    pageInfo = tab.pageInfo;
-    tabId = tab.tabId;
-    $('btn-go-single-link').classList.remove('hidden');
-    chrome.storage.sync.get({srcSheetUrl:''}, function(s){
-      if (s.srcSheetUrl) $('input-src-sheet').value = s.srcSheetUrl;
+  /* Default: respect last-used mode (Single or Batch) from masthead toggle.
+     Migrate v3.10.0's "quick" value to "single" silently. */
+  var lastMode = await new Promise(function(res){
+    chrome.storage.local.get('ortus_last_mode', function(d){
+      var v = (d && d.ortus_last_mode) || 'batch';
+      if (v === 'quick') { v = 'single'; chrome.storage.local.set({ortus_last_mode:'single'}); }
+      res(v);
     });
+  });
+  var tab = await sendBG('checkCurrentTab');
+  if (lastMode === 'single') {
+    currentTab = 'single';
+    if (tab && tab.ok) {
+      pageInfo = tab.pageInfo;
+      tabId = tab.tabId;
+      showView('single-ready');
+      /* Stat strip + ready-status update */
+      if (tab.pageInfo) {
+        $('stat-results').textContent = tab.pageInfo.totalResults || '-';
+        $('stat-pages').textContent = tab.pageInfo.totalPages || '-';
+      }
+    } else {
+      showView('single-wrong');
+    }
     return;
   }
-
-  /* No Sales Nav, just batch-setup */
+  /* Default — Batch */
   currentTab = 'batch';
   showView('batch-setup');
-  $('btn-go-single-link').classList.add('hidden');
+  if (tab && tab.ok) { pageInfo = tab.pageInfo; tabId = tab.tabId; }
   chrome.storage.sync.get({srcSheetUrl:''}, function(s){
     if (s.srcSheetUrl) $('input-src-sheet').value = s.srcSheetUrl;
   });
@@ -446,7 +993,34 @@ async function initSingle(){
   chrome.storage.sync.get({lastSheetUrl:'', lastSheetName:''}, function(s){
     if (s.lastSheetUrl) $('input-sheet-url').value = s.lastSheetUrl;
     if (s.lastSheetName) $('input-sheet-name').value = s.lastSheetName;
+    /* Now that inputs are populated, fire the dedup preview against the
+       restored sheet. Storage hydrate may race the 200ms safety-net below. */
+    if (typeof singlePreview === 'function') singlePreview();
   });
+
+  /* Wire result-sheet inputs to refresh dedup preview */
+  var singlePreviewTimer = null;
+  function singlePreview() {
+    var sheet = $('input-sheet-url') ? $('input-sheet-url').value.trim() : '';
+    var tab = ($('input-sheet-name') ? $('input-sheet-name').value.trim() : '') || 'Sales Nav Scrape';
+    if (sheet.indexOf('docs.google.com/spreadsheets') === -1) {
+      /* refreshDedupForView with empty sheet resets state and re-renders */
+      window.refreshDedupForView('single', '', '');
+      return;
+    }
+    window.refreshDedupForView('single', sheet, tab);
+  }
+  ['input-sheet-url','input-sheet-name'].forEach(function(id) {
+    var el = $(id);
+    if (el && !el._dedupListenerAttached) {
+      el._dedupListenerAttached = true;
+      el.addEventListener('input', function() {
+        if (singlePreviewTimer) clearTimeout(singlePreviewTimer);
+        singlePreviewTimer = setTimeout(singlePreview, 600);
+      });
+    }
+  });
+  setTimeout(singlePreview, 200);
 }
 
 async function startScrape(){
@@ -459,7 +1033,8 @@ async function startScrape(){
     startPage: pageInfo ? pageInfo.currentPage : 1,
     totalPages: pageInfo ? pageInfo.totalPages : 0,
     totalResults: pageInfo ? pageInfo.totalResults : 0,
-    sheetUrl: u, sheetName: nm
+    sheetUrl: u, sheetName: nm,
+    dedup: window.dedupState ? window.dedupState.single.on : true
   };
   var r = await sendBG('startScrape', {config: cfg});
   if (r.ok) { showView('single-progress'); startPoll(); }
@@ -467,9 +1042,20 @@ async function startScrape(){
 
 function showInterrupted(saved){
   showView('single-interrupted');
-  $('interrupted-msg').textContent = 'Stopped on page ' + saved.currentPage;
-  $('int-profiles').textContent = (saved.profilesScraped || 0).toLocaleString();
-  $('int-page').textContent = saved.currentPage + (saved.totalPages ? '/' + saved.totalPages : '');
+  var page = saved.currentPage || 1;
+  var total = saved.totalPages || 0;
+  var leads = saved.profilesScraped || 0;
+  var leadsLabel = leads.toLocaleString() + ' lead' + (leads === 1 ? '' : 's');
+  var pagesLeft = total > page ? (total - page + 1) : 0;
+  var remainEst = pagesLeft ? pagesLeft * 25 : 0;
+  $('int-page-prom').textContent = total ? (page + ' of ' + total) : String(page);
+  $('int-saved-prose').textContent = leads ? leadsLabel + ' are' : 'No leads yet,';
+  $('int-next-page').textContent = page;
+  $('int-profiles').textContent = leads.toLocaleString();
+  $('int-remaining').textContent = remainEst ? '~' + remainEst.toLocaleString() : '—';
+  $('int-cta-h').textContent = 'Keep going from page ' + page;
+  $('int-cta-d').textContent = (leads ? leadsLabel + ' safe' : 'No leads saved yet')
+    + (remainEst ? ' — ~' + remainEst.toLocaleString() + ' to go' : '');
 }
 async function resumeSingle(){
   var r = await sendBG('resumeInterrupted');
@@ -496,6 +1082,12 @@ async function updateProgress(){
   var pct = st.totalPages > 0 ? Math.round((st.currentPage / st.totalPages) * 100) : 0;
   $('prog-fill').style.width = pct + '%';
   $('prog-pct').textContent = pct + '%';
+  if (st.skippedDupes && st.skippedDupes > 0) {
+    $('prog-skipped-row').style.display = '';
+    $('prog-skipped-count').textContent = st.skippedDupes.toLocaleString();
+  } else {
+    $('prog-skipped-row').style.display = 'none';
+  }
   if (st.startTime && st.currentPage > 1) {
     var el = Date.now() - st.startTime;
     var ms = el / (st.currentPage - 1);
@@ -522,6 +1114,12 @@ function showDone(st){
   $('done-pages').textContent = st.currentPage || 0;
   $('done-time').textContent = fmtD((st.endTime || Date.now()) - (st.startTime || Date.now()));
   $('done-errors').textContent = (st.errors || []).length;
+  if (st.skippedDupes && st.skippedDupes > 0) {
+    $('done-skipped-row').style.display = '';
+    $('done-skipped-count').textContent = st.skippedDupes.toLocaleString();
+  } else {
+    $('done-skipped-row').style.display = 'none';
+  }
   $('complete-summary').textContent = 'Scraping complete';
   completedSheetUrl = st.sheetUrl || '';
   $('btn-open-sheet').style.display = completedSheetUrl ? '' : 'none';
@@ -617,13 +1215,17 @@ async function loadTabData(){
   for (var k = 0; k < h.length; k++) {
     var oo = document.createElement('option'); oo.value = k; oo.textContent = (k + 1) + '. ' + h[k]; outSel.appendChild(oo);
   }
-  /* Tab source — add "From column" */
+  /* Tab source — hidden select keeps all 3 options always */
   var tabSrc = $('sel-tab-source');
-  if (!tabSrc.querySelector('option[value="column"]')) {
-    var co = document.createElement('option'); co.value = 'column'; co.textContent = 'From a column in the sheet'; tabSrc.appendChild(co);
-  }
   tabSrc.value = 'auto';
   onTabSourceChange();
+  if (typeof window.syncRadioCardsFromSelect === 'function') window.syncRadioCardsFromSelect();
+  /* Render the new listbox UIs (driven by the hidden selects above) */
+  if (typeof window.populateColListbox === 'function') {
+    window.populateColListbox('sel-url-col-listbox', 'sel-url-col', h, batchColData.sampleRows);
+    window.populateColListbox('sel-tab-col-listbox', 'sel-tab-col', h, batchColData.sampleRows);
+    window.populateColListbox('sel-output-col-listbox', 'sel-output-col', h, batchColData.sampleRows, {includeNone:true, noneLabel:"Don't write back"});
+  }
   /* Row range defaults */
   $('input-row-from').value = '2';
   $('input-row-to').value = '';
@@ -639,8 +1241,10 @@ async function loadTabData(){
 }
 
 function updateColPreview(){
+  var prev = $('col-preview');
+  if (!prev) return; /* legacy node — replaced by inline previews in sel-url-col-listbox */
   var idx = parseInt($('sel-url-col').value);
-  var prev = $('col-preview'); prev.innerHTML = '';
+  prev.innerHTML = '';
   if (!batchColData || !batchColData.sampleRows) return;
   var shown = 0;
   for (var i = 0; i < Math.min(batchColData.sampleRows.length, 5); i++) {
@@ -661,8 +1265,10 @@ function onTabSourceChange(){
 }
 
 function updateTabColPreview(){
+  var prev = $('tab-col-preview');
+  if (!prev) return; /* legacy node — replaced by inline previews in sel-tab-col-listbox */
   var idx = parseInt($('sel-tab-col').value);
-  var prev = $('tab-col-preview'); prev.innerHTML = '';
+  prev.innerHTML = '';
   if (!batchColData || !batchColData.sampleRows) return;
   var shown = 0;
   for (var i = 0; i < Math.min(batchColData.sampleRows.length, 5); i++) {
@@ -709,7 +1315,7 @@ async function confirmBatchConfig(){
     destSheetUrl: destUrl, destTabName: fixedTabName,
     outputColIdx: outputColIdx >= 0 ? outputColIdx + 1 : -1
   };
-  var r = await sendBG('setJobs', Object.assign({jobs: jobs}, lastSetJobsConfig));
+  var r = await sendBG('setJobs', Object.assign({jobs: jobs, dedup: window.dedupState ? window.dedupState.batch.on : true}, lastSetJobsConfig));
   if (!r.ok) { alert(r.error || 'Error setting up jobs'); return; }
 
   showView('batch-ready');
@@ -717,6 +1323,12 @@ async function confirmBatchConfig(){
   jobToggles = jobs.map(function(){ return true; });
   renderJobsForPreview(jobs);
   saveWizard();
+
+  /* Preview dedup against the FIRST job's destination tab as a representative.
+     Each job has its own dedup at runtime; this preview is informational. */
+  if (jobs.length > 0 && window.refreshDedupForView) {
+    window.refreshDedupForView('batch', jobs[0].resultSheetUrl, jobs[0].tabName);
+  }
 }
 
 async function startBatch(){
@@ -734,7 +1346,7 @@ async function startBatch(){
       destTabName: keep[0].tabName,
       outputColIdx: -1
     };
-    await sendBG('setJobs', Object.assign({jobs: keep}, cfg));
+    await sendBG('setJobs', Object.assign({jobs: keep, dedup: window.dedupState ? window.dedupState.batch.on : true}, cfg));
   }
   clearWizard();
   var r = await sendBG('startBatch');
@@ -789,6 +1401,12 @@ function updateBatchView(st){
     } else {
       $('bp-eta').textContent = '';
     }
+    if (st.skippedDupes && st.skippedDupes > 0) {
+      $('bp-skipped-row').style.display = '';
+      $('bp-skipped-count').textContent = st.skippedDupes.toLocaleString();
+    } else {
+      $('bp-skipped-row').style.display = 'none';
+    }
     setLiveBadge(st.isPaused ? 'paused' : 'running', st.isPaused ? 'Paused' : 'Live');
     renderJobsForQueue('batch-job-list', st.jobs, st.currentJobIndex, st.isPaused);
   }
@@ -826,15 +1444,32 @@ function showBatchDone(st){
   $('batch-done-msg').textContent = msg;
   setLiveBadge('done', 'Complete');
   renderJobsForQueue('batch-done-list', jobs, -1);
+  var __batchSkipTotal = st.totalSkippedDupes || st.skippedDupes || 0;
+  if (__batchSkipTotal > 0) {
+    $('batch-done-skipped-row').style.display = '';
+    $('batch-done-skipped-count').textContent = __batchSkipTotal.toLocaleString();
+  } else {
+    $('batch-done-skipped-row').style.display = 'none';
+  }
 }
 
 function showBatchInterrupted(saved){
   showView('batch-interrupted');
   var jobs = saved.jobs || [];
   var done = jobs.filter(function(j){ return j.status && j.status.indexOf('Done') === 0; }).length;
-  $('batch-int-msg').textContent = 'Stopped at ' + done + ' of ' + jobs.length;
+  var total = jobs.length;
+  var nextIdx = jobs.findIndex(function(j){ return !(j.status && j.status.indexOf('Done') === 0); });
+  if (nextIdx < 0) nextIdx = total; /* all done */
+  var nextJobNum = nextIdx + 1;
+  var remaining = Math.max(0, total - done);
+  $('bint-job-prom').textContent = nextJobNum > total ? '—' : String(nextJobNum);
+  $('bint-total-prom').textContent = String(total);
+  $('bint-summary').textContent = done === 0 ? 'No jobs finished yet.' : (done + ' of ' + total + ' job' + (total === 1 ? '' : 's') + ' already done.');
+  $('bint-next').textContent = nextJobNum > total ? '—' : ('job ' + nextJobNum);
   $('bint-done').textContent = done;
-  $('bint-total').textContent = jobs.length;
+  $('bint-remaining').textContent = remaining || '—';
+  $('bint-cta-h').textContent = nextJobNum > total ? 'All jobs already done' : ('Keep going from job ' + nextJobNum);
+  $('bint-cta-d').textContent = done + '/' + total + ' done' + (remaining ? ' — ' + remaining + ' to go' : '');
   setLiveBadge('warn', 'Interrupted');
   renderJobsForQueue('batch-int-list', jobs, -1);
 }
@@ -929,14 +1564,18 @@ function rebuildAllDropdowns(w){
   }
   if (w.selOutputCol) outSel.value = w.selOutputCol;
   var tabSrcSel = $('sel-tab-source');
-  if (!tabSrcSel.querySelector('option[value="column"]')) {
-    var co = document.createElement('option'); co.value = 'column'; co.textContent = 'From a column in the sheet'; tabSrcSel.appendChild(co);
-  }
   if (w.selTabSource) tabSrcSel.value = w.selTabSource;
+  if (typeof window.syncRadioCardsFromSelect === 'function') window.syncRadioCardsFromSelect();
   if (w.destSheet) sv('input-dest-sheet', w.destSheet);
   if (w.destTab) sv('input-dest-tab', w.destTab);
   if (w.rowFrom) sv('input-row-from', w.rowFrom);
   if (w.rowTo) sv('input-row-to', w.rowTo);
+  /* Render listbox UIs after select values are set */
+  if (typeof window.populateColListbox === 'function') {
+    window.populateColListbox('sel-url-col-listbox', 'sel-url-col', h, batchColData.sampleRows);
+    window.populateColListbox('sel-tab-col-listbox', 'sel-tab-col', h, batchColData.sampleRows);
+    window.populateColListbox('sel-output-col-listbox', 'sel-output-col', h, batchColData.sampleRows, {includeNone:true, noneLabel:"Don't write back"});
+  }
 }
 function populateColSelect(id, headers, selectedVal){
   var sel = $(id); sel.innerHTML = '';
@@ -1155,6 +1794,24 @@ function showView(name){
   var el = document.getElementById('view-' + name);
   if (el) el.classList.remove('hidden');
   currentView = name;
+  /* Sync the masthead Single / Batch toggle to match the view */
+  var mq = document.getElementById('mode-single');
+  var mb = document.getElementById('mode-batch');
+  if (mq && mb) {
+    if (name && name.indexOf('single-') === 0) {
+      mq.setAttribute('aria-pressed','true'); mb.setAttribute('aria-pressed','false');
+    } else if (name && name.indexOf('batch-') === 0) {
+      mq.setAttribute('aria-pressed','false'); mb.setAttribute('aria-pressed','true');
+    }
+  }
+  /* Hide the combined control strip on any view past the entry points — once you're
+     mid-flow, the mode choice is irrelevant and switching tabs would lose work.
+     Slow mode goes with it; users rarely toggle it mid-run anyway. */
+  var ctrlStrip = document.querySelector('.control-strip');
+  if (ctrlStrip) {
+    var entryViews = ['batch-setup','single-ready','single-wrong'];
+    ctrlStrip.classList.toggle('hidden', entryViews.indexOf(name) === -1);
+  }
   /* Live badge default per view (running/done overrides happen in updateBatchView/updateProgress) */
   if (name === 'single-progress' || name === 'batch-running') {
     /* state will be set by polling */

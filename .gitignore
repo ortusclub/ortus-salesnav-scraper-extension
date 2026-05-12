@@ -1,0 +1,9 @@
+# Old backup zips
+*.zip
+
+# Manual backup files (popup.html.bak, popup.js.bak)
+*.bak
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store

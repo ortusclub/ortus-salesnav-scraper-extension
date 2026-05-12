@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trim sketches — Sales Nav Scraper</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+:root{
+  --ink:#16140F; --ink-2:#2C2A24; --ink-soft:#6B6557; --ink-faint:#A39B89;
+  --paper:#FDFBF7; --paper-2:#F6F2E9; --paper-warm:#F1ECDF;
+  --rule:#E5DFD0; --rule-2:#C9C0AC;
+  --gold:#C99046; --gold-deep:#9B6A26; --gold-warm:#F0CE89; --gold-tint:#F6E8C8;
+  --ok:#4F7A4D; --err:#8B3A2E;
+  --serif:"Newsreader","Charter",Georgia,serif;
+  --sans:"Geist",-apple-system,system-ui,sans-serif;
+  --mono:"Geist Mono","SFMono-Regular",monospace;
+}
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:var(--sans); font-size:13px; color:var(--ink-2);
+  background:#E8E2D1;
+  padding:32px 24px 80px;
+  -webkit-font-smoothing:antialiased;
+}
+.page{ max-width:1500px; margin:0 auto; }
+.banner{ border-bottom:2px solid var(--ink); padding-bottom:20px; margin-bottom:32px; }
+.banner .eyebrow{
+  font-family:var(--mono); font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--ink-soft); margin-bottom:6px;
+}
+.banner h1{
+  font-family:var(--serif); font-weight:500; font-size:30px; line-height:1.1;
+  margin:0 0 12px; color:var(--ink); letter-spacing:-0.01em;
+}
+.banner h1 em{ font-style:italic; color:var(--gold-deep); }
+.banner p{
+  margin:0; max-width:760px; font-size:14px; line-height:1.55; color:var(--ink-soft);
+}
+
+.grid{
+  display:grid; grid-template-columns:repeat(2, 1fr); gap:28px;
+}
+@media (max-width:1100px){ .grid{grid-template-columns:1fr;} }
+
+.variant{
+  background:var(--paper-warm);
+  border-radius:16px; padding:22px;
+  display:grid;
+  grid-template-columns:432px 1fr;
+  gap:22px;
+  align-items:start;
+}
+@media (max-width:900px){
+  .variant{ grid-template-columns:1fr; }
+}
+.variant-meta h2{
+  font-family:var(--serif); font-weight:500; font-size:22px;
+  margin:0 0 4px; color:var(--ink); letter-spacing:-0.01em;
+}
+.variant-meta h2 .letter{
+  display:inline-block; background:var(--ink); color:var(--paper);
+  font-family:var(--mono); font-size:11px; letter-spacing:0.1em;
+  padding:3px 8px; border-radius:4px; margin-right:8px;
+  vertical-align:middle;
+}
+.variant-meta .pitch{
+  font-size:12px; line-height:1.5; color:var(--ink-soft); margin:0 0 12px;
+}
+.cuts{ margin-top:10px; }
+.cuts h5{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-faint); margin:0 0 6px;
+}
+.cuts ul{ margin:0; padding-left:0; list-style:none; }
+.cuts li{
+  font-size:11.5px; line-height:1.55; color:var(--ink-2);
+  padding:3px 0 3px 18px; position:relative;
+}
+.cuts li.kept::before{
+  content:"✓"; position:absolute; left:0; top:3px;
+  color:var(--ok); font-weight:700; font-size:11px;
+}
+.cuts li.cut::before{
+  content:"×"; position:absolute; left:0; top:2px;
+  color:var(--err); font-weight:700; font-size:13px;
+}
+.cuts li.cut{ color:var(--ink-faint); text-decoration:line-through; }
+
+/* ========== Popup mock (matches real extension popup) ========== */
+.popup{
+  width:432px;
+  background:var(--paper);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 0 0 1px rgba(60,40,10,0.06),
+    0 8px 24px -12px rgba(20,15,5,0.18);
+  position:relative;
+}
+
+/* Masthead */
+.mast{
+  padding:18px 22px 16px;
+  display:grid; grid-template-columns:1fr auto;
+  align-items:center; gap:10px;
+  border-bottom:1px solid var(--rule);
+  background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.brand{ display:flex; align-items:center; gap:10px; }
+.mark{
+  width:28px; height:28px; background:var(--ink); border-radius:6px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:14px; color:var(--paper);
+}
+.brand .name{ font-family:var(--serif); font-weight:500; font-size:13.5px; color:var(--ink); }
+.brand .sub{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-faint); margin-top:1px;
+}
+.right-actions{ display:flex; align-items:center; gap:8px; }
+.pill{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-soft);
+  padding:4px 8px; border:1px solid var(--rule-2); border-radius:999px;
+  background:transparent;
+  display:inline-flex; align-items:center; gap:4px;
+  white-space:nowrap;
+}
+.pill.live-standby{ }
+.pill.live-standby .dot{ width:5px; height:5px; border-radius:50%; background:currentColor; }
+.kebab{
+  width:28px; height:28px; border-radius:50%;
+  border:1px solid var(--rule-2); background:transparent;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:14px; color:var(--ink-soft); cursor:pointer;
+  letter-spacing:0; font-family:var(--sans);
+}
+
+/* Control strip */
+.control-strip{
+  padding:12px 22px; border-bottom:1px solid var(--rule);
+  background:var(--paper);
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+}
+.mode-seg{
+  display:flex; background:var(--paper-2);
+  border-radius:999px; padding:3px; gap:0;
+}
+.mode-seg button{
+  font-family:var(--sans); font-size:12.5px; font-weight:500;
+  padding:6px 14px; border-radius:999px; border:none;
+  background:transparent; color:var(--ink-soft); cursor:pointer;
+  display:inline-flex; align-items:center; gap:5px;
+}
+.mode-seg button.on{ background:var(--ink); color:var(--paper); font-weight:600; }
+.mode-seg button .ic{ font-size:11px; opacity:0.7; }
+.mode-seg button.on .ic{ color:var(--gold-warm); opacity:1; }
+.control-strip-right{ display:flex; align-items:center; gap:10px; }
+.toggle-pill{
+  display:inline-flex; align-items:center; gap:5px;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase;
+  font-weight:600;
+  padding:5px 10px; border:1px solid var(--rule-2); border-radius:999px;
+  color:var(--ink-soft); background:var(--paper);
+}
+.toggle-pill .dot{ width:5px; height:5px; border-radius:50%; background:var(--ink-faint); }
+.toggle-pill .state{
+  font-weight:500; color:var(--ink-faint); padding-left:5px; border-left:1px solid var(--rule-2);
+  margin-left:2px;
+}
+.slow-hint{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.06em;
+  color:var(--ink-faint); white-space:nowrap; line-height:1.3;
+  font-style:italic;
+}
+
+/* Step rail */
+.step-rail{
+  padding:12px 22px; display:flex; align-items:center; gap:10px;
+  font-family:var(--mono); font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+  background:var(--paper); border-bottom:1px solid var(--rule);
+}
+.step-rail .step{
+  display:inline-flex; align-items:center; gap:6px;
+  color:var(--ink-faint);
+}
+.step-rail .step.active{ color:var(--ink); }
+.step-rail .num{
+  width:22px; height:22px; border-radius:50%;
+  border:1.5px solid var(--rule-2);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--sans); font-size:11px; font-weight:600;
+}
+.step-rail .step.active .num{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.step-rail .dash{
+  display:inline-block; width:14px; height:1px; background:var(--rule-2);
+}
+
+/* Hero / form */
+.hero{ padding:22px 22px 22px; }
+.eyebrow{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase;
+  font-weight:600; color:var(--gold-deep);
+  margin-bottom:10px;
+}
+.eyebrow::before{
+  content:""; width:18px; height:1px; background:var(--gold-deep);
+}
+.hero .title{
+  font-family:var(--serif); font-weight:500; font-size:26px; line-height:1.12;
+  color:var(--ink); margin:0 0 10px; letter-spacing:-0.012em;
+}
+.hero .title em{ font-style:italic; }
+.hero .sub{
+  font-size:13px; line-height:1.55; color:var(--ink-soft); margin:0 0 20px;
+}
+
+.field-row{
+  display:flex; align-items:center; justify-content:space-between;
+  margin:18px 0 8px; gap:10px;
+}
+.field-label{
+  font-family:var(--mono); font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+  font-weight:600; color:var(--ink-soft);
+  margin:0;
+}
+.shared-pill{
+  display:inline-flex; align-items:center; gap:5px;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase;
+  font-weight:600;
+  padding:5px 10px; border:1px solid var(--ok); border-radius:999px;
+  color:var(--ok); background:rgba(79,122,77,0.08);
+}
+.shared-pill .dot{ width:5px; height:5px; border-radius:50%; background:var(--ok); }
+.shared-pill .state{
+  font-weight:500; padding-left:5px; border-left:1px solid var(--ok); opacity:0.85;
+}
+
+.input-wrap{ position:relative; }
+.input{
+  width:100%; height:40px; padding:0 14px;
+  border-radius:7px; border:1px solid var(--rule);
+  background:var(--paper);
+  font-family:var(--mono); font-size:12px; color:var(--ink-2);
+  display:flex; align-items:center;
+}
+.input.placeholder{ color:var(--ink-faint); }
+.help-pill-mock{
+  position:absolute;
+  top:-9px; right:-7px;
+  width:20px; height:20px;
+  border-radius:50%;
+  background:var(--gold-warm);
+  border:2px solid var(--paper);
+  font-family:var(--sans); font-weight:700; font-size:11px;
+  color:var(--ink);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 0 0 1px var(--gold-deep);
+}
+
+.actions{ margin-top:22px; display:flex; gap:10px; }
+.cta{
+  background:var(--ink); color:var(--paper);
+  font-family:var(--sans); font-size:13.5px; font-weight:600;
+  padding:11px 22px; border:none; border-radius:999px;
+  display:inline-flex; align-items:center; gap:10px;
+}
+.cta .pod{
+  width:24px; height:24px; border-radius:50%;
+  background:var(--gold); color:var(--ink);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:13px;
+}
+
+.footer-row{
+  padding:14px 22px; border-top:1px solid var(--rule);
+  display:flex; justify-content:space-between;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+
+/* Kebab menu callout (for Variant D illustration) */
+.kebab-menu-callout{
+  position:absolute; top:60px; right:18px;
+  background:var(--paper); border-radius:10px;
+  padding:6px;
+  box-shadow:0 14px 32px -10px rgba(0,0,0,0.28), 0 0 0 1px rgba(60,40,10,0.1);
+  display:flex; flex-direction:column;
+  min-width:140px;
+  z-index:10;
+}
+.kebab-menu-callout button{
+  text-align:left; background:transparent; border:none;
+  padding:8px 12px; border-radius:6px;
+  font-family:var(--sans); font-size:12px; color:var(--ink-2);
+  display:flex; align-items:center; gap:8px;
+}
+.kebab-menu-callout button:hover{ background:var(--paper-2); }
+.kebab-menu-callout .sep{ height:1px; background:var(--rule); margin:4px 0; }
+.kebab-menu-callout .ic{
+  font-family:var(--mono); font-size:10px; color:var(--ink-faint);
+  width:14px; text-align:center;
+}
+
+.compare-note{
+  margin-top:24px;
+  padding:18px 20px;
+  background:var(--paper-2);
+  border-radius:12px;
+  border-left:3px solid var(--gold-deep);
+  font-size:13px; line-height:1.55; color:var(--ink-2);
+}
+.compare-note b{ color:var(--gold-deep); }
+.compare-note .row{ display:flex; gap:16px; align-items:baseline; margin-top:8px; }
+.compare-note .row b{ min-width:80px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="banner">
+    <div class="eyebrow">Sales Nav Scraper · trim sketches · 2026-05-11</div>
+    <h1>Four ways to <em>cut the clutter</em>.</h1>
+    <p>Same view (batch step 1) at the same width. Each variant strips a different amount. Pick which lands; I'll apply that pattern across every view in one sweep.</p>
+  </header>
+
+  <div class="grid">
+
+    <!-- ============================================================ -->
+    <!-- VARIANT A — CURRENT (baseline for comparison)               -->
+    <!-- ============================================================ -->
+    <section class="variant">
+      <div class="popup">
+        <div class="mast">
+          <div class="brand">
+            <div class="mark">▲</div>
+            <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.13.0</div></div>
+          </div>
+          <div class="right-actions">
+            <span class="pill">? Tour</span>
+            <span class="pill">↗ Float</span>
+            <span class="pill live-standby"><span class="dot"></span>Standby</span>
+          </div>
+        </div>
+        <div class="control-strip">
+          <div class="mode-seg">
+            <button><span class="ic">⚡</span>Single</button>
+            <button class="on"><span class="ic">▦</span>Batch</button>
+          </div>
+          <div class="control-strip-right">
+            <span class="toggle-pill"><span class="dot"></span>Slow<span class="state">Off</span></span>
+            <span class="slow-hint">old PC<br>or VM</span>
+          </div>
+        </div>
+        <div class="step-rail">
+          <span class="step active"><span class="num">1</span>Sheet</span><span class="dash"></span>
+          <span class="step"><span class="num">2</span>Configure</span><span class="dash"></span>
+          <span class="step"><span class="num">3</span>Run</span>
+        </div>
+        <div class="hero">
+          <span class="eyebrow">Step 1 · Source sheet</span>
+          <h2 class="title">Paste a sheet.<br><em>Get the leads.</em></h2>
+          <p class="sub">A Google Sheet with one Sales Nav search URL per row. We'll batch them and write a results-link back into the source sheet.</p>
+          <div class="field-row">
+            <label class="field-label">Source sheet URL</label>
+            <span class="shared-pill"><span class="dot"></span>Shared<span class="state">OK</span></span>
+          </div>
+          <div class="input-wrap">
+            <div class="input placeholder">https://docs.google.com/spreadsheets/d/1RfRDbg…</div>
+            <span class="help-pill-mock">?</span>
+          </div>
+          <div class="actions">
+            <button class="cta">Connect<span class="pod">→</span></button>
+          </div>
+        </div>
+        <div class="footer-row">
+          <span>Settings ↗</span>
+          <span>v3.13.0 · Ortus</span>
+        </div>
+      </div>
+
+      <div class="variant-meta">
+        <h2><span class="letter">A</span>Current</h2>
+        <p class="pitch">Today's popup. Baseline reference — no changes. Showing it so the trims have something to be measured against.</p>
+        <div class="cuts">
+          <h5>What's on this view</h5>
+          <ul>
+            <li class="kept">Step rail (1 Sheet → 2 → 3)</li>
+            <li class="kept">"Step 1 · Source sheet" eyebrow</li>
+            <li class="kept">Title + descriptive paragraph</li>
+            <li class="kept">"Source sheet URL" field label</li>
+            <li class="kept">3 masthead pills</li>
+            <li class="kept">"Standby" idle badge</li>
+            <li class="kept">"old PC / or VM" italic hint</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- VARIANT B — LIGHT TRIM                                       -->
+    <!-- ============================================================ -->
+    <section class="variant">
+      <div class="popup">
+        <div class="mast">
+          <div class="brand">
+            <div class="mark">▲</div>
+            <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.13.0</div></div>
+          </div>
+          <div class="right-actions">
+            <span class="pill">? Tour</span>
+            <span class="pill">↗ Float</span>
+            <!-- Standby pill removed during idle -->
+          </div>
+        </div>
+        <div class="control-strip">
+          <div class="mode-seg">
+            <button><span class="ic">⚡</span>Single</button>
+            <button class="on"><span class="ic">▦</span>Batch</button>
+          </div>
+          <div class="control-strip-right">
+            <span class="toggle-pill"><span class="dot"></span>Slow<span class="state">Off</span></span>
+            <span class="slow-hint">old PC<br>or VM</span>
+          </div>
+        </div>
+        <div class="step-rail">
+          <span class="step active"><span class="num">1</span>Sheet</span><span class="dash"></span>
+          <span class="step"><span class="num">2</span>Configure</span><span class="dash"></span>
+          <span class="step"><span class="num">3</span>Run</span>
+        </div>
+        <div class="hero">
+          <!-- eyebrow removed -->
+          <h2 class="title" style="margin-top:6px;">Paste a sheet.<br><em>Get the leads.</em></h2>
+          <p class="sub">One Sales Nav search URL per row. We'll batch them and write the result link back.</p>
+          <div class="input-wrap" style="margin-top:18px;">
+            <div class="input placeholder">https://docs.google.com/spreadsheets/d/1RfRDbg…</div>
+            <span class="help-pill-mock">?</span>
+          </div>
+          <div style="margin-top:8px; display:flex; justify-content:flex-end;">
+            <span class="shared-pill"><span class="dot"></span>Shared<span class="state">OK</span></span>
+          </div>
+          <div class="actions">
+            <button class="cta">Connect<span class="pod">→</span></button>
+          </div>
+        </div>
+        <div class="footer-row">
+          <span>Settings ↗</span>
+          <span>v3.13.0 · Ortus</span>
+        </div>
+      </div>
+
+      <div class="variant-meta">
+        <h2><span class="letter">B</span>Light trim</h2>
+        <p class="pitch">Removes the obvious duplicates. Keeps the poetic title and the descriptive paragraph (shortened). Sharing badge moves under the input. Masthead drops Standby while idle.</p>
+        <div class="cuts">
+          <h5>Cuts vs current</h5>
+          <ul>
+            <li class="cut">"Step 1 · Source sheet" eyebrow</li>
+            <li class="cut">"Source sheet URL" field label</li>
+            <li class="cut">"Standby" idle badge in masthead</li>
+            <li class="kept">Keep step rail (still tells you where you are)</li>
+            <li class="kept">Keep title + tightened paragraph</li>
+            <li class="kept">Keep ? Tour + ↗ Float pills</li>
+            <li class="kept">Keep "old PC / or VM" hint</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- VARIANT C — TIGHT TRIM                                       -->
+    <!-- ============================================================ -->
+    <section class="variant">
+      <div class="popup">
+        <div class="mast">
+          <div class="brand">
+            <div class="mark">▲</div>
+            <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.13.0</div></div>
+          </div>
+          <div class="right-actions">
+            <span class="pill">? Tour</span>
+            <span class="pill">↗ Float</span>
+          </div>
+        </div>
+        <div class="control-strip">
+          <div class="mode-seg">
+            <button><span class="ic">⚡</span>Single</button>
+            <button class="on"><span class="ic">▦</span>Batch</button>
+          </div>
+          <div class="control-strip-right">
+            <span class="toggle-pill"><span class="dot"></span>Slow<span class="state">Off</span></span>
+            <span class="slow-hint">old PC<br>or VM</span>
+          </div>
+        </div>
+        <div class="step-rail">
+          <span class="step active"><span class="num">1</span>Sheet</span><span class="dash"></span>
+          <span class="step"><span class="num">2</span>Configure</span><span class="dash"></span>
+          <span class="step"><span class="num">3</span>Run</span>
+        </div>
+        <div class="hero">
+          <h2 class="title" style="margin-top:6px;">Paste a sheet.<br><em>Get the leads.</em></h2>
+          <!-- paragraph removed entirely -->
+          <div class="input-wrap" style="margin-top:18px;">
+            <div class="input placeholder">https://docs.google.com/spreadsheets/d/1RfRDbg…</div>
+            <span class="help-pill-mock">?</span>
+          </div>
+          <div style="margin-top:8px; display:flex; justify-content:flex-end;">
+            <span class="shared-pill"><span class="dot"></span>Shared<span class="state">OK</span></span>
+          </div>
+          <div class="actions">
+            <button class="cta">Connect<span class="pod">→</span></button>
+          </div>
+        </div>
+        <div class="footer-row">
+          <span>Settings ↗</span>
+          <span>v3.13.0 · Ortus</span>
+        </div>
+      </div>
+
+      <div class="variant-meta">
+        <h2><span class="letter">C</span>Tight trim</h2>
+        <p class="pitch">Light trim plus: descriptive paragraph gone. Title alone carries the meaning, the step rail tells you where you are. Maximum air, still has the poetic title.</p>
+        <div class="cuts">
+          <h5>Cuts vs current</h5>
+          <ul>
+            <li class="cut">Eyebrow "Step 1 · Source sheet"</li>
+            <li class="cut">Descriptive paragraph under the title</li>
+            <li class="cut">"Source sheet URL" field label</li>
+            <li class="cut">"Standby" idle badge</li>
+            <li class="kept">Keep step rail</li>
+            <li class="kept">Keep poetic title</li>
+            <li class="kept">Keep ? Tour + ↗ Float</li>
+            <li class="kept">Keep "old PC / or VM" hint</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- VARIANT D — RADICAL TRIM                                     -->
+    <!-- ============================================================ -->
+    <section class="variant">
+      <div class="popup" style="position:relative;">
+        <div class="mast">
+          <div class="brand">
+            <div class="mark">▲</div>
+            <div><div class="name">Sales Nav Batch Scraper</div><div class="sub">Ortus v3.13.0</div></div>
+          </div>
+          <div class="right-actions">
+            <button class="kebab" title="Menu">⋯</button>
+          </div>
+        </div>
+        <!-- Kebab menu shown open for illustration -->
+        <div class="kebab-menu-callout">
+          <button><span class="ic">?</span>Tour</button>
+          <button><span class="ic">↗</span>Float window</button>
+          <div class="sep"></div>
+          <button><span class="ic">⚙</span>Settings</button>
+        </div>
+        <div class="control-strip">
+          <div class="mode-seg">
+            <button><span class="ic">⚡</span>Single</button>
+            <button class="on"><span class="ic">▦</span>Batch</button>
+          </div>
+          <div class="control-strip-right">
+            <span class="toggle-pill"><span class="dot"></span>Slow<span class="state">Off</span></span>
+            <!-- italic hint removed -->
+          </div>
+        </div>
+        <div class="step-rail">
+          <span class="step active"><span class="num">1</span>Sheet</span><span class="dash"></span>
+          <span class="step"><span class="num">2</span>Configure</span><span class="dash"></span>
+          <span class="step"><span class="num">3</span>Run</span>
+        </div>
+        <div class="hero">
+          <h2 class="title" style="margin-top:6px; font-size:23px;">Paste your source sheet.</h2>
+          <div class="input-wrap" style="margin-top:18px;">
+            <div class="input placeholder">https://docs.google.com/spreadsheets/d/1RfRDbg…</div>
+            <span class="help-pill-mock">?</span>
+          </div>
+          <div style="margin-top:8px; display:flex; justify-content:flex-end;">
+            <span class="shared-pill"><span class="dot"></span>Shared<span class="state">OK</span></span>
+          </div>
+          <div class="actions">
+            <button class="cta">Connect<span class="pod">→</span></button>
+          </div>
+        </div>
+        <div class="footer-row">
+          <span>v3.13.0 · Ortus</span>
+          <span></span>
+        </div>
+      </div>
+
+      <div class="variant-meta">
+        <h2><span class="letter">D</span>Radical trim</h2>
+        <p class="pitch">Strips everything that isn't load-bearing. Masthead becomes brand + ⋯ menu (Tour/Float/Settings inside). Title is functional, not poetic. No paragraph, no field label, no italic hint.</p>
+        <div class="cuts">
+          <h5>Cuts vs current</h5>
+          <ul>
+            <li class="cut">Eyebrow</li>
+            <li class="cut">Descriptive paragraph</li>
+            <li class="cut">"Source sheet URL" field label</li>
+            <li class="cut">"Standby" idle badge</li>
+            <li class="cut">"? Tour" + "↗ Float" pills (now in ⋯ menu)</li>
+            <li class="cut">Settings link in footer (also in ⋯)</li>
+            <li class="cut">"old PC / or VM" italic hint</li>
+            <li class="cut">Poetic title → functional title</li>
+            <li class="kept">Keep step rail</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="compare-note">
+    <b>What stays the same in every variant:</b> Step rail, mode toggle, Slow toggle, sheet input, coachmark "?" pill, sharing pill, Connect CTA, version footer. The cuts are all <i>chrome</i>, not function.
+    <div class="row">
+      <b>B vs C:</b> Only difference is whether the descriptive paragraph stays. If you trust the title alone, go C. If the paragraph helps first-time users, go B.
+    </div>
+    <div class="row">
+      <b>C vs D:</b> D goes further by collapsing the masthead pills into a ⋯ menu and dropping the poetic title. Less personality, more density.
+    </div>
+    <div class="row">
+      <b>If unsure:</b> Pick C. It's the cleanest cut that still feels like the rest of the popup.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

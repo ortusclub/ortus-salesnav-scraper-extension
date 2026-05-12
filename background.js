@@ -1,4 +1,92 @@
 var WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyW3i2O8ZOCO1mpGmUnu2sLeCXWI9n0HrFCE8ZZ2dzf27SRVNELKL85vxpKLM0-b3_k/exec";
+
+/* ─── Dedup key extraction ────────────────────────────────────────────
+ * Two-namespace Set: 'id:' for LinkedIn Membership IDs, 'tok:' for URL
+ * tokens. A scraped profile is a dup if either of its keys hits the Set. */
+
+function normalizeMembershipId(v) {
+  if (v == null) return null;
+  var m = String(v).match(/^\s*(\d+)/);
+  return m ? m[1] : null;
+}
+
+function tokenFromUrl(raw) {
+  if (!raw) return null;
+  var m = String(raw).toLowerCase().match(/\/(?:in|sales\/lead)\/([a-z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+function dedupKeysForProfile(p) {
+  var keys = [];
+  if (!p) return keys;
+  var id = normalizeMembershipId(p.membershipId);
+  if (id) keys.push("id:" + id);
+  var tok = tokenFromUrl(p.profileUrl);
+  if (tok) keys.push("tok:" + tok);
+  return keys;
+}
+
+/* Filter a freshly-extracted profile array against state.knownProfiles.
+ * Returns { kept:[...new only...], skipped:N }. Each kept profile's keys
+ * are added to the known set so within-run dupes are also caught. */
+function applyDedupFilter(profiles) {
+  if (!state.knownProfiles) return { kept: profiles, skipped: 0 };
+  var kept = [];
+  var skipped = 0;
+  for (var i = 0; i < profiles.length; i++) {
+    var p = profiles[i];
+    var keys = dedupKeysForProfile(p);
+    if (keys.length === 0) { kept.push(p); continue; }   // anonymous — keep
+    var isDupe = false;
+    for (var j = 0; j < keys.length; j++) {
+      if (state.knownProfiles.has(keys[j])) { isDupe = true; break; }
+    }
+    if (isDupe) { skipped++; continue; }
+    for (var k = 0; k < keys.length; k++) state.knownProfiles.add(keys[k]);
+    kept.push(p);
+  }
+  return { kept: kept, skipped: skipped };
+}
+/* ─── Diagnostic logging ──────────────────────────────────────────────
+ * Per-attempt rows written to __logs tab in our internal log sheet.
+ * Fire-and-forget — never blocks the scrape, never throws on failure. */
+function sendLog(fields) {
+  try {
+    var payload = Object.assign({action:'writeLog', ts:new Date().toISOString(),
+      scraperVer:(chrome.runtime.getManifest && chrome.runtime.getManifest().version) || ''}, fields || {});
+    fetch(WEB_APP_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'text/plain'},
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    }).catch(function(){}); /* swallow — diagnostic, never break scrape */
+  } catch (e) { /* ignore */ }
+}
+
+/* Returns 'visible' / 'hidden' / 'unknown' for the scraping tab.
+ * Uses chrome.tabs.get + chrome.windows.get (cheap, no script injection,
+ * cannot hang). Visible = tab is active in its window AND window is focused.
+ * Race against a 1.5s timer as a hard belt-and-braces — diagnostic must
+ * never block extraction. */
+function getTabVisibility(tabId) {
+  return new Promise(function(resolve){
+    if (!tabId) { resolve('unknown'); return; }
+    var done = false;
+    var t = setTimeout(function(){ if (!done){ done=true; resolve('unknown'); } }, 1500);
+    try {
+      chrome.tabs.get(tabId, function(tab){
+        if (chrome.runtime.lastError || !tab) { if (!done){done=true;clearTimeout(t);resolve('unknown');} return; }
+        chrome.windows.get(tab.windowId, function(win){
+          if (done) return;
+          done = true; clearTimeout(t);
+          if (chrome.runtime.lastError || !win) { resolve('unknown'); return; }
+          resolve((tab.active && win.focused) ? 'visible' : 'hidden');
+        });
+      });
+    } catch (e) { if (!done){done=true;clearTimeout(t);resolve('unknown');} }
+  });
+}
+
 var DELAY_MIN_FAST = 2000;
 var DELAY_MAX_FAST = 4000;
 var DELAY_MIN_SLOW = 6000;
@@ -91,6 +179,7 @@ var state = {
   mode: null, isRunning: false, isPaused: false, recoverRequested: false, retryQueue: [],
   tabId: null, currentPage: 0, totalPages: 0, totalResults: 0,
   profilesScraped: 0, allProfiles: [], errors: [],
+  knownProfiles: null, skippedDupes: 0, totalSkippedDupes: 0, dedupOn: false, resumingJob: false,
   startTime: null, endTime: null, sheetUrl: '', sheetName: '',
   jobs: [], currentJobIndex: -1,
   salesNavUrl: '',
@@ -172,6 +261,13 @@ chrome.runtime.onMessage.addListener(function(msg,sender,sendResponse){
     case 'checkSheetSharing':checkSheetSharing(msg.sheetUrl).then(sendResponse);return true;
     case 'readTabs':readTabs(msg.sheetUrl).then(sendResponse);return true;
     case 'readColumns':readColumns(msg.sheetUrl,msg.tabName).then(sendResponse);return true;
+    case 'previewDedup':
+      (async function() {
+        var k = await buildKnownProfilesSet(msg.sheetUrl, msg.tabName);
+        if (k.error) sendResponse({ ok: false, error: k.error });
+        else sendResponse({ ok: true, count: k.set ? k.set.size : 0, hasIdCol: k.hasIdCol, hasUrlCol: k.hasUrlCol });
+      })();
+      return true;
     case 'setJobs':setJobs(msg);sendResponse({ok:true});break;
     case 'startBatch':startBatch().then(sendResponse);return true;
     case 'stopBatch':stopBatch();sendResponse({ok:true});break;
@@ -200,12 +296,14 @@ function pubState(){
     currentPage:state.currentPage,totalPages:state.totalPages,totalResults:state.totalResults,
     profilesScraped:state.profilesScraped,profileCount:state.allProfiles.length,
     errors:state.errors,startTime:state.startTime,endTime:state.endTime,sheetUrl:state.sheetUrl,
+    totalSkippedDupes:state.totalSkippedDupes||0,
+    skippedDupes:state.skippedDupes||0,
     jobs:state.jobs,currentJobIndex:state.currentJobIndex};
 }
 
 function resetState(){
   state={mode:null,isRunning:false,isPaused:false,recoverRequested:false,retryQueue:[],tabId:null,currentPage:0,totalPages:0,totalResults:0,
-    profilesScraped:0,allProfiles:[],errors:[],startTime:null,endTime:null,sheetUrl:'',sheetName:'',
+    profilesScraped:0,allProfiles:[],errors:[],knownProfiles:null,skippedDupes:0,totalSkippedDupes:0,dedupOn:false,resumingJob:false,startTime:null,endTime:null,sheetUrl:'',sheetName:'',
     jobs:[],currentJobIndex:-1,salesNavUrl:'',srcSheetUrl:'',srcTabName:'',outputColIdx:-1};
   chrome.action.setBadgeText({text:''});
   stopSaveTimer();
@@ -261,6 +359,10 @@ async function saveState(){
     sheetName:state.sheetName,salesNavUrl:state.salesNavUrl,
     srcSheetUrl:state.srcSheetUrl,srcTabName:state.srcTabName,outputColIdx:state.outputColIdx,
     jobs:state.jobs,currentJobIndex:state.currentJobIndex,
+    knownProfilesArr: state.knownProfiles ? Array.from(state.knownProfiles) : null,
+    skippedDupes: state.skippedDupes || 0,
+    totalSkippedDupes: state.totalSkippedDupes || 0,
+    dedupOn: !!state.dedupOn,
     savedAt:Date.now(),interrupted:true
   };
   try{await chrome.storage.local.set({ortus_saved_state:s});}
@@ -297,6 +399,16 @@ async function resumeInterrupted(){
       state.totalResults=s.totalResults||0;state.sheetUrl=s.sheetUrl||'';
       state.sheetName=s.sheetName||'Sales Nav Scrape';state.salesNavUrl=s.salesNavUrl;
       state.profilesScraped=s.profilesScraped||0;state.errors=s.errors||[];
+      state.skippedDupes = s.skippedDupes || 0;
+      state.totalSkippedDupes = s.totalSkippedDupes || 0;
+      state.dedupOn = s.dedupOn !== false;
+      state.knownProfiles = (s.knownProfilesArr && Array.isArray(s.knownProfilesArr)) ? new Set(s.knownProfilesArr) : null;
+      /* If resuming from before this feature shipped, knownProfiles will be null —
+         re-fetch from the sheet so dedup still works on the resumed run. */
+      if (state.dedupOn && state.knownProfiles === null && state.sheetUrl && state.sheetName) {
+        var __resumeKnown = await buildKnownProfilesSet(state.sheetUrl, state.sheetName);
+        state.knownProfiles = __resumeKnown.set;
+      }
       chrome.action.setBadgeBackgroundColor({color:'#1a73e8'});
       /* Open the page at the right page number */
       var resumeUrl=s.salesNavUrl;
@@ -323,6 +435,21 @@ async function resumeInterrupted(){
       state.srcSheetUrl=s.srcSheetUrl||'';state.srcTabName=s.srcTabName||'';
       state.outputColIdx=s.outputColIdx||-1;
       state.profilesScraped=s.profilesScraped||0;
+      state.skippedDupes = s.skippedDupes || 0;
+      state.totalSkippedDupes = s.totalSkippedDupes || 0;
+      state.dedupOn = s.dedupOn !== false;
+      state.knownProfiles = (s.knownProfilesArr && Array.isArray(s.knownProfilesArr)) ? new Set(s.knownProfilesArr) : null;
+      /* Re-fetch fallback if knownProfiles wasn't persisted (e.g. resuming from pre-feature state) */
+      if (state.dedupOn && state.knownProfiles === null && state.jobs && state.jobs[state.currentJobIndex]) {
+        var __resumeJob = state.jobs[state.currentJobIndex];
+        if (__resumeJob.resultSheetUrl && __resumeJob.tabName) {
+          var __resumeKnown = await buildKnownProfilesSet(__resumeJob.resultSheetUrl, __resumeJob.tabName);
+          state.knownProfiles = __resumeKnown.set;
+        }
+      }
+      /* Tell the first nextJob call NOT to reset skippedDupes/knownProfiles —
+         we just restored the in-flight counter and rebuilt the dedup set. */
+      state.resumingJob = true;
       chrome.action.setBadgeBackgroundColor({color:'#1a73e8'});
       await clearSavedState();
       startSaveTimer();nextJob();
@@ -353,6 +480,13 @@ async function startSingle(cfg){
   state.tabId=cfg.tabId;state.currentPage=cfg.startPage||1;state.totalPages=cfg.totalPages||0;
   state.totalResults=cfg.totalResults||0;state.sheetUrl=cfg.sheetUrl||'';state.sheetName=cfg.sheetName||'Sales Nav Scrape';
   state.startTime=Date.now();
+  state.dedupOn = cfg.dedup !== false;
+  state.skippedDupes = 0;
+  state.knownProfiles = null;
+  if (state.dedupOn && cfg.sheetUrl && cfg.sheetName) {
+    var __known = await buildKnownProfilesSet(cfg.sheetUrl, cfg.sheetName);
+    state.knownProfiles = __known.set;
+  }
   maybeAutoOpenMini();
   /* Save the Sales Nav URL for resume */
   try{
@@ -369,7 +503,11 @@ async function runSinglePage(){
   chrome.action.setBadgeText({text:state.totalPages>0?pg+'/'+state.totalPages:'p'+pg});bc();
   try{
     await waitTab(tid);
+    var __t0=Date.now();
+    var __vis='unknown';
+    getTabVisibility(tid).then(function(v){__vis=v;}); /* fire-and-forget, never blocks */
     var r=await tabMsg(tid,{action:'extractProfiles',slow:SLOW_MODE});
+    var __ms=Date.now()-__t0;
     /* Post-extraction integrity check — uses pi.url from the result we already have.
      * Catches both empty-page wipes AND silent fallback wipes (LinkedIn returning
      * unfiltered results) before we add bad profiles to the collection. */
@@ -380,9 +518,18 @@ async function runSinglePage(){
     }
     if(r&&r.profiles){
       for(var i=0;i<r.profiles.length;i++)r.profiles[i].pageNumber=pg;
-      state.allProfiles=state.allProfiles.concat(r.profiles);state.profilesScraped+=r.profiles.length;
+      var __dedupResult = applyDedupFilter(r.profiles);
+      state.allProfiles = state.allProfiles.concat(__dedupResult.kept);
+      state.profilesScraped += __dedupResult.kept.length;
+      state.skippedDupes += __dedupResult.skipped;
       if(r.pageInfo&&r.pageInfo.totalPages>0){state.totalPages=r.pageInfo.totalPages;state.totalResults=r.pageInfo.totalResults;}
-      if(state.sheetUrl)sendSheet(r.profiles,pg,state.sheetUrl,state.sheetName).catch(function(e){addLog('error','Async sheet err: '+e.message);});
+      if(state.sheetUrl)sendSheet(__dedupResult.kept,pg,state.sheetUrl,state.sheetName).catch(function(e){addLog('error','Async sheet err: '+e.message);});
+      sendLog({mode:'single',jobId:'single',searchUrl:state.salesNavUrl||'',pageNum:pg,attempt:'primary',
+        rawCount:r.profiles.length,afterDedup:__dedupResult.kept.length,skippedDupes:__dedupResult.skipped,
+        msExtract:__ms,tabVisible:__vis,error:''});
+    } else {
+      sendLog({mode:'single',jobId:'single',searchUrl:state.salesNavUrl||'',pageNum:pg,attempt:'primary',
+        rawCount:0,afterDedup:0,skippedDupes:0,msExtract:__ms,tabVisible:__vis,error:'no-profiles'});
     }
     bc();
     var pi=await tabMsg(tid,{action:'getPageInfo'});
@@ -479,6 +626,7 @@ function setJobs(msg){
   state.jobs=msg.jobs;state.sheetUrl=msg.destSheetUrl;state.sheetName=msg.destTabName;
   state.srcSheetUrl=msg.srcSheetUrl||'';state.srcTabName=msg.srcTabName||'';
   state.outputColIdx=msg.outputColIdx||-1;/* 1-indexed column for write-back, -1 = disabled */
+    state.dedupOn = msg.dedup !== false;
 }
 
 /* Auto-open the floating mini status window when a scrape starts (unless disabled).
@@ -542,6 +690,20 @@ async function nextJob(){
     }
   }
   var job=state.jobs[state.currentJobIndex];var jn=state.currentJobIndex+1;var tot=state.jobs.length;
+  /* Per-job dedup setup — each job's destination tab has its own known set */
+  if (state.resumingJob) {
+    /* First nextJob after resumeInterrupted — preserve restored skippedDupes
+       and the known set. The Set was already rebuilt by resumeInterrupted
+       (either from knownProfilesArr or via re-fetch). */
+    state.resumingJob = false;
+  } else {
+    state.skippedDupes = 0;
+    state.knownProfiles = null;
+    if (state.dedupOn && job.resultSheetUrl && job.tabName) {
+      var __jobKnown = await buildKnownProfilesSet(job.resultSheetUrl, job.tabName);
+      state.knownProfiles = __jobKnown.set;
+    }
+  }
   chrome.action.setBadgeText({text:jn+'/'+tot});bc();
   job.status='Running';
   try{
@@ -605,11 +767,16 @@ async function nextJob(){
         }catch(er){addLog('error','Recover reopen failed: '+er.message);break;}
       }
       chrome.action.setBadgeText({text:jn+':p'+cp});bc();
+      addLog('info','Loop iter: cp='+cp+' allP='+allP.length+' skipped='+skippedPages.length+' isRunning='+state.isRunning);
       var pageProfiles=0;
       try{
         /* === STEP A: Wait for content to render, then extract === */
         try{await tabMsg(tab.id,{action:'waitForResults',timeout:15000});}catch(ew){}
+        var __t0b=Date.now();
+        var __visb='unknown';
+        getTabVisibility(tab.id).then(function(v){__visb=v;});
         var r=await tabMsg(tab.id,{action:'extractProfiles',slow:SLOW_MODE});
+        var __msb=Date.now()-__t0b;
         /* Post-extraction integrity check: piggybacks on r.pageInfo.url (already in the result).
          * Catches both empty-page wipes AND silent fallback wipes before bad profiles enter allP. */
         if(r&&r.pageInfo&&r.pageInfo.url&&!urlFiltersIntact(r.pageInfo.url,job.salesNavUrl)){
@@ -619,31 +786,55 @@ async function nextJob(){
         }
         if(r&&r.profiles&&r.profiles.length>0){
           for(var i=0;i<r.profiles.length;i++)r.profiles[i].pageNumber=cp;
-          allP=allP.concat(r.profiles);pageProfiles=r.profiles.length;consecutiveEmpty=0;recentSkips=0;
+          var __filt0=applyDedupFilter(r.profiles);
+          state.skippedDupes+=__filt0.skipped;
+          allP=allP.concat(__filt0.kept);pageProfiles=__filt0.kept.length;consecutiveEmpty=0;recentSkips=0;
+          var rawPageCount=r.profiles.length;
           state.profilesScraped=allP.length;state.currentPage=cp;bc();
-          addLog('info', 'Page '+cp+': got '+r.profiles.length+', total: '+allP.length+(r.pageInfo?' (pageTotal='+r.pageInfo.totalResults+')':''));
+          addLog('info', 'Page '+cp+': got '+r.profiles.length+' raw ('+__filt0.kept.length+' new, '+__filt0.skipped+' dupe), total: '+allP.length+(r.pageInfo?' (pageTotal='+r.pageInfo.totalResults+')':''));
+          sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:cp,attempt:'primary',
+            rawCount:r.profiles.length,afterDedup:__filt0.kept.length,skippedDupes:__filt0.skipped,
+            msExtract:__msb,tabVisible:__visb,error:''});
           /* Sub-25 on a non-final page: keep re-extracting with 6s waits until we hit 25.
            * Cap at 10 attempts (60s extra per page) so genuinely anonymous-heavy pages don't
            * loop forever. Do NOT label the missing ones "anonymous" — we don't actually know. */
-          if(pageProfiles>0&&pageProfiles<25&&cp<maxPage){
+          if(rawPageCount>0&&rawPageCount<25&&cp<maxPage){
             var SOFT_MAX_ATTEMPTS=5;
             var softAttempt=0;
-            while(softAttempt<SOFT_MAX_ATTEMPTS&&pageProfiles<25&&state.isRunning){
+            while(softAttempt<SOFT_MAX_ATTEMPTS&&rawPageCount<25&&state.isRunning){
               softAttempt++;
               addLog('info','Page '+cp+' partial ('+pageProfiles+'/25), waiting 6s then re-checking (attempt '+softAttempt+'/'+SOFT_MAX_ATTEMPTS+')');
               await new Promise(function(r){setTimeout(r,6000);});
               if(!state.isRunning)break;
               try{
                 try{await tabMsg(tab.id,{action:'waitForResults',timeout:10000});}catch(ew){}
+                var __tS=Date.now();
+                var __visS='unknown';
+                getTabVisibility(tab.id).then(function(v){__visS=v;});
                 var rSoft=await tabMsg(tab.id,{action:'extractProfiles',slow:SLOW_MODE});
-                if(rSoft&&rSoft.profiles&&rSoft.profiles.length>pageProfiles){
+                var __msS=Date.now()-__tS;
+                var __rawSoft=(rSoft&&rSoft.profiles)?rSoft.profiles.length:0;
+                if(rSoft&&rSoft.profiles&&rSoft.profiles.length>rawPageCount){
                   allP=allP.filter(function(p){return p.pageNumber!==cp;});
                   for(var is=0;is<rSoft.profiles.length;is++)rSoft.profiles[is].pageNumber=cp;
-                  allP=allP.concat(rSoft.profiles);pageProfiles=rSoft.profiles.length;
+                  var __filtSoft=applyDedupFilter(rSoft.profiles);
+                  state.skippedDupes+=__filtSoft.skipped;
+                  allP=allP.concat(__filtSoft.kept);rawPageCount=rSoft.profiles.length;pageProfiles=__filtSoft.kept.length;
                   state.profilesScraped=allP.length;bc();
                   r=rSoft;
+                  sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:cp,attempt:'soft-'+softAttempt,
+                    rawCount:__rawSoft,afterDedup:__filtSoft.kept.length,skippedDupes:__filtSoft.skipped,
+                    msExtract:__msS,tabVisible:__visS,error:''});
+                } else {
+                  sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:cp,attempt:'soft-'+softAttempt,
+                    rawCount:__rawSoft,afterDedup:0,skippedDupes:0,
+                    msExtract:__msS,tabVisible:__visS,error:__rawSoft<=rawPageCount?'no-improvement':''});
                 }
-              }catch(eSoft){}
+              }catch(eSoft){
+                sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:cp,attempt:'soft-'+softAttempt,
+                  rawCount:0,afterDedup:0,skippedDupes:0,msExtract:0,tabVisible:'unknown',
+                  error:'soft-retry-exception: '+(eSoft.message||String(eSoft))});
+              }
             }
             if(pageProfiles<25){
               var miss=25-pageProfiles;
@@ -658,19 +849,30 @@ async function nextJob(){
         }else{
           /* === RETRY 1: Re-inject content script, wait for results, extract === */
           addLog('warn', 'Page '+cp+': 0 profiles, retrying with re-inject + waitForResults...');
+          sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:cp,attempt:'primary',
+            rawCount:0,afterDedup:0,skippedDupes:0,msExtract:__msb,tabVisible:__visb,error:'primary-empty'});
           await new Promise(function(r){setTimeout(r,3000);});
           /* Re-inject content script (guard flag will block duplicate listeners — that's fine,
            * the existing listener is still active and will respond to messages) */
           try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(e){}
           await new Promise(function(r){setTimeout(r,1000);});
           try{await tabMsg(tab.id,{action:'waitForResults',timeout:15000});}catch(ew){}
+          var __t1=Date.now();
+          var __vis1='unknown';
+          getTabVisibility(tab.id).then(function(v){__vis1=v;});
           var r2=await tabMsg(tab.id,{action:'extractProfiles',slow:SLOW_MODE});
+          var __ms1=Date.now()-__t1;
           if(r2&&r2.profiles&&r2.profiles.length>0){
             for(var i2=0;i2<r2.profiles.length;i2++)r2.profiles[i2].pageNumber=cp;
-            allP=allP.concat(r2.profiles);pageProfiles=r2.profiles.length;consecutiveEmpty=0;recentSkips=0;
+            var __filt2=applyDedupFilter(r2.profiles);
+            state.skippedDupes+=__filt2.skipped;
+            allP=allP.concat(__filt2.kept);pageProfiles=__filt2.kept.length;consecutiveEmpty=0;recentSkips=0;
             state.profilesScraped=allP.length;state.currentPage=cp;bc();
             addLog('info', 'Page '+cp+' retry ok: got '+r2.profiles.length+', total: '+allP.length);
-            sendSheet(r2.profiles,cp,job.resultSheetUrl,job.tabName||'Sales Nav Scrape').catch(function(e){addLog('error','Async sheet err: '+e.message);});
+            sendSheet(__filt2.kept,cp,job.resultSheetUrl,job.tabName||'Sales Nav Scrape').catch(function(e){addLog('error','Async sheet err: '+e.message);});
+            sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:cp,attempt:'retry-1',
+              rawCount:r2.profiles.length,afterDedup:__filt2.kept.length,skippedDupes:__filt2.skipped,
+              msExtract:__ms1,tabVisible:__vis1,error:''});
           }else{
             /* === RETRY 2: Full page reload + waitForResults === */
             addLog('warn', 'Page '+cp+': still 0, trying full reload...');
@@ -708,17 +910,29 @@ async function nextJob(){
                   }/* end if(!nudgeFixed) */
                 }
               }catch(ew2){addLog('warn','Reload waitForResults err: '+ew2.message);await new Promise(function(r){setTimeout(r,8000);});}
+              var __t2=Date.now();
+              var __vis2='unknown';
+              getTabVisibility(tab.id).then(function(v){__vis2=v;});
               var r3=await tabMsg(tab.id,{action:'extractProfiles',slow:SLOW_MODE});
+              var __ms2=Date.now()-__t2;
               if(r3&&r3.profiles&&r3.profiles.length>0){
                 for(var i3=0;i3<r3.profiles.length;i3++)r3.profiles[i3].pageNumber=cp;
-                allP=allP.concat(r3.profiles);pageProfiles=r3.profiles.length;consecutiveEmpty=0;recentSkips=0;
+                var __filt3=applyDedupFilter(r3.profiles);
+                state.skippedDupes+=__filt3.skipped;
+                allP=allP.concat(__filt3.kept);pageProfiles=__filt3.kept.length;consecutiveEmpty=0;recentSkips=0;
                 state.profilesScraped=allP.length;state.currentPage=cp;bc();
                 addLog('info', 'Page '+cp+' reload ok: got '+r3.profiles.length+', total: '+allP.length);
-                sendSheet(r3.profiles,cp,job.resultSheetUrl,job.tabName||'Sales Nav Scrape').catch(function(e){addLog('error','Async sheet err: '+e.message);});
+                sendSheet(__filt3.kept,cp,job.resultSheetUrl,job.tabName||'Sales Nav Scrape').catch(function(e){addLog('error','Async sheet err: '+e.message);});
+                sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:cp,attempt:'retry-2',
+                  rawCount:r3.profiles.length,afterDedup:__filt3.kept.length,skippedDupes:__filt3.skipped,
+                  msExtract:__ms2,tabVisible:__vis2,error:''});
               }else{
                 addLog('error', 'Page '+cp+': 0 after full reload + waitForResults');
                 consecutiveEmpty++;
                 skippedPages.push(cp);recentSkips++;
+                sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:cp,attempt:'retry-2',
+                  rawCount:0,afterDedup:0,skippedDupes:0,msExtract:__ms2,tabVisible:__vis2,
+                  error:'retry-2-empty (page skipped)'});
                 if(recentSkips>=3){addLog('info','Cooldown 45s after '+recentSkips+' recent skips...');await new Promise(function(r){setTimeout(r,45000);});recentSkips=0;}
               }
               r2=r3;
@@ -819,6 +1033,7 @@ async function nextJob(){
         try{await tabMsg(tab.id,{action:'waitForResults',timeout:15000});}catch(ew){}
       }
     }
+    addLog('info','Page loop exited: cp='+cp+' maxPage='+maxPage+' isRunning='+state.isRunning+' allP='+allP.length+' skipped='+skippedPages.length);
     /* ═══ RETRY PASS: Go back for skipped pages ═══ */
     if(skippedPages.length>0&&state.isRunning){
       addLog('info','Retry pass: '+skippedPages.length+' skipped pages ['+skippedPages.join(',')+']');
@@ -839,15 +1054,34 @@ async function nextJob(){
           await new Promise(function(r){setTimeout(r,1000);});
           /* Wait for results to render — critical for retry pass success */
           try{await tabMsg(tab.id,{action:'waitForResults',timeout:20000});}catch(ew){}
+          var __tR=Date.now();
+          var __visR='unknown';
+          getTabVisibility(tab.id).then(function(v){__visR=v;});
           var rr=await tabMsg(tab.id,{action:'extractProfiles',slow:SLOW_MODE});
+          var __msR=Date.now()-__tR;
           if(rr&&rr.profiles&&rr.profiles.length>0){
             for(var ri=0;ri<rr.profiles.length;ri++)rr.profiles[ri].pageNumber=sp;
-            allP=allP.concat(rr.profiles);recovered+=rr.profiles.length;
+            var __filtR=applyDedupFilter(rr.profiles);
+            state.skippedDupes+=__filtR.skipped;
+            allP=allP.concat(__filtR.kept);recovered+=__filtR.kept.length;
             state.profilesScraped=allP.length;bc();
             addLog('info','Retry page '+sp+': got '+rr.profiles.length+', total now '+allP.length);
-            sendSheet(rr.profiles,sp,job.resultSheetUrl,job.tabName||'Sales Nav Scrape').catch(function(e){addLog('error','Async sheet err: '+e.message);});
-          }else{addLog('warn','Retry page '+sp+': still 0');}
-        }catch(e){addLog('error','Retry page '+sp+' error: '+e.message);}
+            sendSheet(__filtR.kept,sp,job.resultSheetUrl,job.tabName||'Sales Nav Scrape').catch(function(e){addLog('error','Async sheet err: '+e.message);});
+            sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:sp,attempt:'retry-pass',
+              rawCount:rr.profiles.length,afterDedup:__filtR.kept.length,skippedDupes:__filtR.skipped,
+              msExtract:__msR,tabVisible:__visR,error:''});
+          }else{
+            addLog('warn','Retry page '+sp+': still 0');
+            sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:sp,attempt:'retry-pass',
+              rawCount:0,afterDedup:0,skippedDupes:0,msExtract:__msR,tabVisible:__visR,
+              error:'retry-pass-empty'});
+          }
+        }catch(e){
+          addLog('error','Retry page '+sp+' error: '+e.message);
+          sendLog({mode:'batch',jobId:String(jn),searchUrl:job.salesNavUrl||'',pageNum:sp,attempt:'retry-pass',
+            rawCount:0,afterDedup:0,skippedDupes:0,msExtract:0,tabVisible:'unknown',
+            error:'retry-pass-exception: '+(e.message||String(e))});
+        }
         await new Promise(function(r){setTimeout(r,pageDelay());});
       }
       addLog('info','Retry pass done: recovered '+recovered+' from '+skippedPages.length+' pages');
@@ -881,9 +1115,12 @@ async function nextJob(){
       }catch(e){addLog('error','Write-back error: '+e.message);}
     }
   }catch(e){
+    addLog('error','Job '+jn+' OUTER catch (silent fail): '+(e.message||String(e))+' · stack: '+(e.stack||'no stack'));
     job.status='Error: '+e.message;
     try{if(state.tabId){try{await chrome.tabs.setZoom(state.tabId,0.75);}catch(e){}await chrome.tabs.remove(state.tabId);}}catch(x){}
   }
+  state.totalSkippedDupes = (state.totalSkippedDupes || 0) + (state.skippedDupes || 0);
+  state.skippedDupes = 0;
   bc();
   if(state.isRunning){await new Promise(function(r){setTimeout(r,rDelay(5000,10000));});await waitWhilePaused();if(state.isRunning)nextJob();}
 }
@@ -892,6 +1129,7 @@ function stopBatch(){
   state.isRunning=false;state.isPaused=false;state.recoverRequested=false;state.retryQueue=[];state.endTime=Date.now();stopSaveTimer();clearSavedState();
   if(state.currentJobIndex>=0&&state.currentJobIndex<state.jobs.length){
     state.jobs[state.currentJobIndex].status='Stopped';
+    state.totalSkippedDupes = (state.totalSkippedDupes || 0) + (state.skippedDupes || 0);
   }
   try{if(state.tabId){try{chrome.tabs.setZoom(state.tabId,0.75);}catch(e){}chrome.tabs.remove(state.tabId);}}catch(e){}
   chrome.action.setBadgeText({text:''});bc();
@@ -907,6 +1145,42 @@ function notifyError(msg){
   }catch(e){addLog('error','Notification error: '+e.message);}
   chrome.action.setBadgeBackgroundColor({color:'#f75f5f'});
   chrome.action.setBadgeText({text:'!'});
+}
+
+/* Fetch known profiles from the destination sheet and build a Set<string>
+ * keyed with 'id:<digits>' or 'tok:<url-token>' prefixes.
+ * Returns: { set, hasIdCol, hasUrlCol, error? } — set is null on failure
+ * so the caller can run without dedup. */
+async function buildKnownProfilesSet(sheetUrl, tabName) {
+  if (!sheetUrl || !tabName) {
+    addLog("warn", "Dedup: missing sheetUrl or tabName — skipping dedup");
+    return { set: null, hasIdCol: false, hasUrlCol: false };
+  }
+  try {
+    var payload = { action: "getKnownProfiles", sheetUrl: sheetUrl, tabName: tabName };
+    var resp = await fetch(WEB_APP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(payload)
+    });
+    var data = await resp.json();
+    if (!data.success) throw new Error(data.error || "getKnownProfiles failed");
+
+    var set = new Set();
+    (data.ids || []).forEach(function(v) {
+      var k = normalizeMembershipId(v);
+      if (k) set.add("id:" + k);
+    });
+    (data.tokens || []).forEach(function(v) {
+      var k = tokenFromUrl(v);
+      if (k) set.add("tok:" + k);
+    });
+    addLog("info", "Dedup: loaded " + set.size + " known keys from '" + tabName + "' (ids:" + (data.ids||[]).length + ", tokens:" + (data.tokens||[]).length + ")");
+    return { set: set, hasIdCol: !!data.hasIdCol, hasUrlCol: !!data.hasUrlCol };
+  } catch (e) {
+    addLog("warn", "Dedup: getKnownProfiles failed — running without dedup. " + (e.message || e));
+    return { set: null, hasIdCol: false, hasUrlCol: false, error: String(e.message || e) };
+  }
 }
 
 /* ─── SHEET API ─── */
@@ -960,8 +1234,8 @@ function waitNav(tid,to){
 
 function toCSV(ps){
   if(!ps.length)return '';
-  var h=['Record ID','First Name','Last Name','Domain','Priority (Company)','Priority (Role)','Priority','Lead Status','Company Name','Job Title','Linkedin Bio','First Phone','First Phone Value','Phone Number','Whatsapp Link','Mobile Phone Number','Email','Email Verification','LinkedIn Membership ID','Location','Notes','Secondary Email','Hubspot URL','Ortus Members','Current Tag','Open Profile','Premium','Linkedin First Connection','Client Lead Status','Apollo Contact ID','ID Check'];
-  var rows=ps.map(function(p){return['',p.firstName||'',p.lastName||'','','','','','',p.company||'',p.jobTitle||'',p.publicUrl||p.profileUrl||'','','','','','',p.linkedinEmail||'','',(p.membershipId||'').toString(),p.location||'','','','','','',p.openProfile||'No',p.premium||'Unknown','','','',p.idUnverified||''].map(function(v){return '"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');});
+  var h=['Record ID','First Name','Last Name','Domain','Priority (Company)','Priority (Role)','Priority','Lead Status','Company Name','Job Title','Linkedin Bio','First Phone','First Phone Validation','Phone Number','Whatsapp Link','Mobile Phone Number','Email','Email Verification','LinkedIn Membership ID','Location','Notes','Secondary Emails','Hubspot URL','Ortus Membership','Current Tag','Open Profile','Premium Account','Linkedin First Connections','Client Lead Status','Apollo Contact ID','Additional email addresses'];
+  var rows=ps.map(function(p){return['',p.firstName||'',p.lastName||'','','','','','',p.company||'',p.jobTitle||'',p.publicUrl||p.profileUrl||'','','','','','',p.linkedinEmail||'','',(p.membershipId||'').toString(),p.location||'','','','','','',p.openProfile||'No',p.premium||'Unknown','','','',''].map(function(v){return '"'+String(v||'').replace(/"/g,'""')+'"';}).join(',');});
   return[h.join(',')].concat(rows).join('\n');
 }
 

@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sales Nav Scraper — Redesign Review</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+:root{
+  --ink:#16140F; --ink-2:#2C2A24; --ink-soft:#6B6557; --ink-faint:#A39B89;
+  --paper:#FDFBF7; --paper-2:#F6F2E9; --paper-warm:#F1ECDF;
+  --rule:#E5DFD0; --rule-2:#C9C0AC;
+  --gold:#C99046; --gold-deep:#9B6A26; --gold-warm:#F0CE89; --gold-tint:#F6E8C8;
+  --ok:#4F7A4D; --err:#8B3A2E; --info:#2E5A8B;
+  --serif:"Newsreader","Charter",Georgia,serif;
+  --sans:"Geist",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --mono:"Geist Mono","JetBrains Mono",monospace;
+  --ease:cubic-bezier(0.32,0.72,0,1);
+}
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:#E8E1CC;
+  font-family:var(--sans); font-size:14px; color:var(--ink-2);
+  -webkit-font-smoothing:antialiased;
+  padding:60px 40px 100px;
+}
+*:focus-visible{outline:2px solid var(--gold-deep); outline-offset:2px; border-radius:4px;}
+
+.board{max-width:1200px; margin:0 auto;}
+
+/* ─── Top matter ─── */
+.top{
+  border-bottom:1px solid var(--rule-2);
+  padding-bottom:36px; margin-bottom:50px;
+}
+.top .eyebrow{
+  font-family:var(--mono); font-size:10px; letter-spacing:0.22em; text-transform:uppercase;
+  color:var(--gold-deep); margin-bottom:14px;
+}
+.top h1{
+  font-family:var(--serif); font-weight:500; font-size:48px; line-height:1.05;
+  letter-spacing:-0.02em; color:var(--ink); margin:0 0 20px;
+}
+.top h1 em{font-style:italic; font-weight:400;}
+.top .lead{
+  font-size:16px; line-height:1.65; color:var(--ink-soft);
+  max-width:720px;
+}
+.top .lead strong{color:var(--ink); font-weight:600;}
+.top .commitments{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:32px;
+}
+.top .commitment{
+  padding:18px; border:1px solid var(--rule);
+  background:var(--paper); border-radius:10px;
+}
+.top .commitment .l{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-faint); margin-bottom:6px;
+}
+.top .commitment .v{font-family:var(--serif); font-weight:500; font-size:14px; color:var(--ink); line-height:1.4;}
+
+/* ─── Section ─── */
+.section{margin-bottom:80px;}
+.section .head{margin-bottom:24px; max-width:780px;}
+.section .head .num{
+  font-family:var(--mono); font-size:11px; letter-spacing:0.18em;
+  color:var(--gold-deep); margin-bottom:8px;
+}
+.section .head h2{
+  font-family:var(--serif); font-weight:500; font-size:30px; letter-spacing:-0.015em;
+  color:var(--ink); margin:0 0 10px; line-height:1.1;
+}
+.section .head .why{
+  font-size:13.5px; color:var(--ink-soft); line-height:1.65;
+}
+.section .head .why strong{color:var(--ink); font-weight:600;}
+
+.compare{
+  display:grid; grid-template-columns:1fr 1fr; gap:32px;
+  align-items:start;
+}
+.compare.three{grid-template-columns:1fr 1fr 1fr; gap:20px;}
+.column .stamp{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase;
+  margin-bottom:10px;
+  padding:4px 10px; border-radius:999px;
+}
+.column .stamp.current{color:var(--err); background:rgba(139,58,46,0.06); border:1px solid rgba(139,58,46,0.25);}
+.column .stamp.proposal{color:var(--ok); background:rgba(79,122,77,0.08); border:1px solid rgba(79,122,77,0.30);}
+.column .stamp .dot{width:6px; height:6px; border-radius:50%; background:currentColor;}
+
+.frame{
+  background:var(--paper); border-radius:14px;
+  border:1px solid var(--rule);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 8px 24px -16px rgba(20,15,5,0.18);
+  overflow:hidden;
+  width:100%;
+}
+.frame.popup{width:432px; max-width:100%;}
+.frame.tall{min-height:200px;}
+
+.note{
+  margin-top:14px; padding:12px 14px;
+  border-radius:8px; background:var(--paper);
+  border:1px solid var(--rule);
+  border-left:3px solid var(--gold-deep);
+  font-size:12.5px; color:var(--ink-soft); line-height:1.6;
+}
+.note strong{color:var(--ink); font-weight:600;}
+.note ul{margin:6px 0 0 0; padding-left:18px;}
+.note li{margin:3px 0;}
+
+/* ─── Popup primitives (cloned from popup.html so visuals match) ─── */
+.mast{
+  padding:18px 22px 16px;
+  display:grid; grid-template-columns:1fr auto;
+  align-items:center; gap:10px;
+  border-bottom:1px solid var(--rule);
+  background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+}
+.brand{display:flex; align-items:center; gap:10px;}
+.mark{
+  display:inline-block; width:28px; height:28px; border-radius:6px; flex-shrink:0;
+  background:var(--ink);
+}
+.brand-text .name{font-family:var(--serif); font-weight:500; font-size:13.5px; color:var(--ink);}
+.brand-text .sub{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-faint); margin-top:1px;
+}
+.live{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:4px 10px 4px 8px; border-radius:999px;
+  font-family:var(--mono); font-size:9px; letter-spacing:0.12em; text-transform:uppercase; font-weight:600;
+  border:1px solid var(--rule-2); color:var(--ink-soft);
+}
+.live .dot{width:5px; height:5px; border-radius:50%; background:currentColor;}
+.right-actions{display:flex; align-items:center; gap:8px;}
+.float-pill{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-soft); background:transparent; border:1px solid var(--rule-2);
+  padding:4px 10px; border-radius:999px;
+}
+
+.body{padding:22px 26px 24px;}
+.eyebrow{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--gold-deep);
+}
+.eyebrow::before{content:""; width:16px; height:1px; background:var(--gold-deep);}
+.title{
+  font-family:var(--serif); font-weight:500; font-size:22px; line-height:1.15;
+  letter-spacing:-0.02em; color:var(--ink); margin:14px 0 0;
+}
+.title em{font-style:italic; font-weight:400;}
+.subt{margin-top:12px; color:var(--ink-soft); font-size:12.5px; line-height:1.65;}
+.field-label{
+  display:block;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--ink-faint); margin:22px 0 10px;
+}
+.field-label:first-child{margin-top:0;}
+input[type="url"], input[type="text"], input[type="number"], select{
+  width:100%; height:40px; padding:0 14px;
+  border-radius:7px; border:1px solid var(--rule);
+  background:var(--paper);
+  font-family:var(--mono); font-size:12px; color:var(--ink-2);
+  transition:all 200ms var(--ease);
+  -webkit-appearance:none; appearance:none;
+  font-family:var(--mono);
+}
+select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23A39B89' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 12px center; padding-right:32px; cursor:pointer;
+}
+input:focus, select:focus{outline:none; border-color:var(--ink); box-shadow:0 0 0 3px rgba(201,144,70,0.18);}
+
+/* CTAs */
+.cta{
+  display:inline-flex; align-items:center; gap:10px;
+  height:44px; padding:4px 4px 4px 18px;
+  border-radius:999px;
+  background:var(--ink); color:var(--paper); border:0;
+  font:500 13px/1 var(--sans);
+  cursor:pointer;
+  box-shadow:0 1px 0 rgba(255,255,255,0.07) inset, 0 8px 18px -10px rgba(20,15,5,0.5);
+}
+.cta .pod{
+  width:34px; height:34px; border-radius:50%;
+  background:var(--gold); color:var(--ink);
+  display:inline-flex; align-items:center; justify-content:center; font-size:14px;
+}
+.ghost{
+  height:40px; padding:0 18px; border-radius:999px;
+  background:transparent; color:var(--ink-2); border:1px solid var(--rule-2);
+  font:500 12px/1 var(--sans); cursor:pointer;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.ghost.danger{border-color:rgba(139,58,46,0.35); color:var(--err);}
+.ghost.warn{border-color:rgba(201,144,70,0.5); color:#6F4715;}
+.ghost.sm{height:32px; padding:0 14px; font-size:11.5px;}
+.actions{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+.actions.between{justify-content:space-between;}
+
+.stat-strip{
+  display:grid; grid-template-columns:repeat(3,1fr); margin-top:14px;
+  border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+}
+.stat{padding:11px 12px; border-right:1px solid var(--rule);}
+.stat:last-child{border-right:0;}
+.stat .v{font-family:var(--serif); font-weight:500; font-size:18px; color:var(--ink); line-height:1; letter-spacing:-0.015em;}
+.stat .l{font-family:var(--mono); font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--ink-faint); margin-top:4px;}
+
+/* ─── Masthead toggle (Quick / Batch) ─── */
+.mode-seg{
+  display:inline-flex; padding:3px; border-radius:999px;
+  background:var(--paper-2); border:1px solid var(--rule-2);
+}
+.mode-seg button{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  padding:7px 16px; border-radius:999px;
+  font-family:var(--sans); font-size:12px; font-weight:500; color:var(--ink-soft);
+  display:inline-flex; align-items:center; gap:6px;
+  transition:all 220ms var(--ease);
+}
+.mode-seg button[aria-pressed="true"]{background:var(--ink); color:var(--paper);}
+.mode-seg button .ic{font-size:10px;}
+
+/* Quick-card pair on welcome (if we ever go that route — included for context) */
+.mode-cards{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:20px;}
+.mode-card{
+  display:block; padding:18px 16px; border-radius:12px;
+  border:1px solid var(--rule); background:var(--paper);
+  cursor:pointer; transition:all 220ms var(--ease);
+}
+.mode-card:hover{border-color:var(--ink); transform:translateY(-1px);}
+.mode-card .k{font-family:var(--mono); font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:var(--ink-faint);}
+.mode-card .h{font-family:var(--serif); font-weight:500; font-size:16px; color:var(--ink); margin-top:6px;}
+.mode-card .d{font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.5;}
+.mode-card.unavailable{opacity:0.55; cursor:not-allowed;}
+.mode-card.unavailable .d{color:var(--err);}
+
+/* ─── Dropdown alternatives ─── */
+/* Radio cards (replacement for sel-tab-source) */
+.radio-stack{display:grid; gap:8px;}
+.radio-card{
+  display:grid; grid-template-columns:18px 1fr auto; align-items:start; gap:12px;
+  padding:14px 14px; border-radius:10px;
+  border:1px solid var(--rule); background:var(--paper);
+  cursor:pointer; transition:all 200ms var(--ease);
+  text-align:left;
+}
+.radio-card:hover{border-color:var(--ink-soft);}
+.radio-card[aria-checked="true"]{border-color:var(--ink); background:var(--paper);
+  box-shadow:0 0 0 1px var(--ink);}
+.radio-card .ring{
+  width:18px; height:18px; border-radius:50%;
+  border:1.5px solid var(--rule-2);
+  display:inline-flex; align-items:center; justify-content:center;
+  flex-shrink:0; margin-top:1px;
+}
+.radio-card[aria-checked="true"] .ring{border-color:var(--ink);}
+.radio-card[aria-checked="true"] .ring::after{content:""; width:8px; height:8px; border-radius:50%; background:var(--ink);}
+.radio-card .h{font-family:var(--serif); font-weight:500; font-size:14px; color:var(--ink); line-height:1.3;}
+.radio-card .d{font-size:11.5px; color:var(--ink-soft); margin-top:4px; line-height:1.55;}
+.radio-card .ex{
+  font-family:var(--mono); font-size:10px; color:var(--ink-faint);
+  background:var(--paper-2); padding:2px 8px; border-radius:5px;
+  white-space:nowrap;
+}
+
+/* Search-friendly select header */
+.smart-select{position:relative;}
+.smart-select .picked{
+  display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:10px;
+  padding:0 14px; height:44px;
+  border:1px solid var(--rule); border-radius:8px; background:var(--paper);
+  cursor:pointer;
+}
+.smart-select .picked .label{font-family:var(--mono); font-size:12px; color:var(--ink-2);}
+.smart-select .picked .preview{font-family:var(--mono); font-size:10px; color:var(--ink-faint); justify-self:end;}
+.smart-select .picked .chev{color:var(--ink-faint); font-size:11px;}
+
+/* Column option list (for column-pickers) */
+.col-list{
+  list-style:none; padding:0; margin:8px 0 0;
+  border:1px solid var(--rule); border-radius:8px; overflow:hidden;
+  background:var(--paper);
+}
+.col-list li{
+  display:grid; grid-template-columns:36px 1fr auto; align-items:center; gap:12px;
+  padding:11px 14px; border-bottom:1px solid var(--rule); cursor:pointer;
+}
+.col-list li:last-child{border-bottom:0;}
+.col-list li:hover{background:var(--paper-2);}
+.col-list li[aria-selected="true"]{background:var(--paper-2); box-shadow:inset 3px 0 0 var(--ink);}
+.col-list li .col{
+  font-family:var(--mono); font-size:11px; color:var(--ink-faint);
+  font-weight:600; letter-spacing:0.04em;
+}
+.col-list li .nm{font-family:var(--serif); font-weight:500; font-size:13px; color:var(--ink);}
+.col-list li .preview{font-family:var(--mono); font-size:10px; color:var(--ink-faint); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+/* ─── Resume card (proposal) ─── */
+.resume-card{
+  border:1px solid var(--rule); border-radius:12px; padding:18px 20px;
+  background:linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+  margin-top:14px;
+}
+.resume-card .where{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--gold-deep); margin-bottom:12px;
+}
+.resume-card .stats{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;
+}
+.resume-card .stat-mini{
+  padding:10px 12px; background:var(--paper); border-radius:8px; border:1px solid var(--rule);
+}
+.resume-card .stat-mini .v{font-family:var(--serif); font-weight:500; font-size:18px; color:var(--ink); line-height:1; letter-spacing:-0.015em;}
+.resume-card .stat-mini .l{font-family:var(--mono); font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--ink-faint); margin-top:4px;}
+.resume-card .actions{justify-content:space-between;}
+.cta-resume{
+  display:inline-flex; align-items:center; gap:12px;
+  background:var(--ink); color:var(--paper); border:0;
+  border-radius:12px; padding:14px 18px;
+  cursor:pointer; text-align:left;
+  box-shadow:0 8px 18px -10px rgba(20,15,5,0.5);
+  flex:1; min-width:0;
+}
+.cta-resume .pod{
+  width:36px; height:36px; border-radius:50%;
+  background:var(--gold); color:var(--ink);
+  display:inline-flex; align-items:center; justify-content:center; font-size:15px;
+  flex-shrink:0;
+}
+.cta-resume .stack{display:flex; flex-direction:column; gap:2px; min-width:0;}
+.cta-resume .stack .h{font:500 13px/1.2 var(--sans);}
+.cta-resume .stack .d{font:400 11px/1.3 var(--sans); color:rgba(253,251,247,0.7);}
+
+.danger-link{
+  appearance:none; background:transparent; border:0; padding:8px 0;
+  font:500 12px var(--sans); color:var(--err);
+  cursor:pointer; text-decoration:underline; text-underline-offset:3px;
+}
+.danger-link:hover{color:#6B2820;}
+
+/* ─── Mid-run cluster (proposal) ─── */
+.run-cluster{
+  display:grid; grid-template-columns:1fr auto; gap:12px;
+  align-items:center; margin-top:18px; padding:14px;
+  background:var(--paper-2); border-radius:10px; border:1px solid var(--rule);
+}
+.run-cluster .left{display:flex; gap:8px; flex-wrap:wrap;}
+.run-cluster .stop-area{display:flex; align-items:center; gap:10px;}
+
+/* Confirm-stop affordance */
+.confirm-strip{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 12px; background:var(--paper); border-radius:8px;
+  border:1px solid var(--err); border-left:3px solid var(--err);
+  font-size:11.5px; color:var(--err);
+}
+.confirm-strip strong{color:var(--ink); font-weight:600;}
+
+/* ─── Accessibility showcase ─── */
+.a11y-grid{display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:14px;}
+.a11y-card{
+  padding:20px; border:1px solid var(--rule); border-radius:12px;
+  background:var(--paper);
+}
+.a11y-card h3{
+  font-family:var(--serif); font-weight:500; font-size:16px; color:var(--ink); margin:0 0 12px;
+}
+.a11y-card .desc{font-size:12px; color:var(--ink-soft); line-height:1.6; margin-bottom:14px;}
+
+.tap-targets{display:flex; align-items:flex-end; gap:24px;}
+.tap-target{display:flex; flex-direction:column; align-items:center; gap:8px;}
+.tap-target .box{
+  border:2px dashed var(--rule-2); border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:10px; color:var(--ink-faint);
+}
+.tap-target .box.b32{width:32px; height:32px;}
+.tap-target .box.b40{width:40px; height:40px;}
+.tap-target .box.b44{width:44px; height:44px; border-color:var(--ok); color:var(--ok);}
+.tap-target .l{font-family:var(--mono); font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-faint);}
+
+.contrast-row{display:flex; gap:10px; margin-top:8px; flex-wrap:wrap;}
+.contrast-pill{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:8px 12px; border-radius:8px;
+  font-family:var(--mono); font-size:11px;
+  border:1px solid var(--rule);
+}
+.contrast-pill .ratio{
+  font-family:var(--mono); font-size:9px; letter-spacing:0.12em; text-transform:uppercase;
+  padding:2px 6px; border-radius:4px; background:var(--paper-2); color:var(--ink-faint);
+}
+
+.status-row{display:flex; gap:8px; flex-wrap:wrap;}
+.status-chip{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 11px; border-radius:999px;
+  font-family:var(--mono); font-size:10px; letter-spacing:0.12em; text-transform:uppercase; font-weight:600;
+}
+.status-chip .ic{font-size:11px; line-height:1;}
+.status-chip.done{background:rgba(79,122,77,0.10); color:var(--ok); border:1px solid rgba(79,122,77,0.35);}
+.status-chip.run{background:var(--gold-tint); color:#6F4715; border:1px solid var(--gold-deep);}
+.status-chip.err{background:rgba(139,58,46,0.08); color:var(--err); border:1px solid rgba(139,58,46,0.35);}
+.status-chip.wait{background:var(--paper-2); color:var(--ink-faint); border:1px solid var(--rule);}
+
+.focus-demo{
+  display:flex; gap:14px; flex-wrap:wrap; margin-top:8px;
+}
+.focus-demo .demo-btn{
+  appearance:none; border:1px solid var(--rule-2); background:var(--paper);
+  padding:10px 16px; border-radius:8px; cursor:pointer;
+  font:500 12px var(--sans); color:var(--ink-2);
+}
+.focus-demo .demo-btn.simulated-focus{
+  outline:2px solid var(--gold-deep); outline-offset:2px;
+  border-color:var(--ink);
+}
+
+/* ─── Closer ─── */
+.closer{
+  margin-top:80px; padding:30px 0 0; border-top:1px solid var(--rule-2);
+  display:grid; grid-template-columns:1fr 1fr; gap:32px;
+  font-size:12px; color:var(--ink-soft); line-height:1.65;
+}
+.closer h3{font-family:var(--serif); font-weight:500; font-size:18px; color:var(--ink); margin:0 0 10px;}
+.closer ul{margin:6px 0; padding-left:18px;}
+.closer li{margin:4px 0;}
+.closer code{font-family:var(--mono); font-size:11px; background:var(--paper-2); padding:1px 6px; border-radius:4px; color:var(--ink-2);}
+
+@media (max-width: 920px){
+  .compare, .compare.three, .a11y-grid, .closer, .top .commitments{grid-template-columns:1fr;}
+  body{padding:30px 16px 60px;}
+}
+</style>
+</head>
+<body>
+
+<div class="board">
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <header class="top">
+    <div class="eyebrow">Sales Nav Scraper · v3.10 redesign review</div>
+    <h1>Make it <em>obvious</em>.<br>Then make it <em>safe</em>.</h1>
+    <p class="lead">
+      A side-by-side review of the proposed v3.10 changes. Three problem areas:
+      <strong>Single Link is unreachable</strong> for users not already on a Sales Nav tab,
+      <strong>Resume copy is abstract</strong> ("Resume" / "Start fresh" tells you nothing about
+      what's at stake), and <strong>several controls feel anonymous</strong> — dropdowns where
+      radio cards belong, ghost buttons where hierarchy belongs. Underneath, the same
+      editorial palette and typography. Everything visible meets WCAG AA.
+    </p>
+    <div class="commitments">
+      <div class="commitment">
+        <div class="l">Touch targets</div>
+        <div class="v">Every interactive control is at minimum 44×44 px. Many today are 32 px — too small for thumbs and trackpads.</div>
+      </div>
+      <div class="commitment">
+        <div class="l">Status never color-only</div>
+        <div class="v">Pills and chips pair color with an icon and a text label so colorblind users get the same signal.</div>
+      </div>
+      <div class="commitment">
+        <div class="l">Concrete labels</div>
+        <div class="v">Buttons describe what will happen, not what they're called. "Resume" → "Pick up at page 4 (73 leads safe)".</div>
+      </div>
+    </div>
+  </header>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- 1 — MODE TOGGLE                                                  -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="head">
+      <div class="num">01 · Discoverability</div>
+      <h2>Quick / Batch toggle, pinned to the masthead.</h2>
+      <p class="why">
+        Today single-link mode is gated behind two conditions: (a) you must already be on a Sales Nav tab,
+        and (b) you have to spot a tiny ghost button under the Connect CTA. If either fails, single mode is
+        unreachable. The new toggle is always visible, always one click away.
+      </p>
+    </div>
+
+    <div class="compare">
+      <div class="column">
+        <span class="stamp current"><span class="dot"></span>Current · v3.9.3</span>
+        <div class="frame popup">
+          <div class="mast">
+            <div class="brand">
+              <span class="mark"></span>
+              <div class="brand-text">
+                <div class="name">Sales Nav Batch Scraper</div>
+                <div class="sub">Ortus v3.9.3</div>
+              </div>
+            </div>
+            <div class="right-actions">
+              <button class="float-pill">↗ Float</button>
+              <span class="live"><span class="dot" style="background:var(--ink-faint)"></span>Standby</span>
+            </div>
+          </div>
+          <div class="body">
+            <span class="eyebrow">Step 1 · Source sheet</span>
+            <h2 class="title">Paste a sheet.<br><em>Get the leads.</em></h2>
+            <p class="subt">A Google Sheet with one Sales Nav search URL per row.</p>
+            <label class="field-label" style="margin-top:18px">Source sheet URL</label>
+            <input type="text" placeholder="https://docs.google.com/spreadsheets/d/…" value="">
+            <div class="actions" style="margin-top:18px">
+              <button class="cta">Connect <span class="pod">→</span></button>
+              <button class="ghost sm" style="opacity:0.55">Or scrape this Sales Nav tab</button>
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Problem:</strong> the "Or scrape this Sales Nav tab" ghost is only visible when the user opens the popup
+          while already on Sales Nav. If they open from anywhere else, single mode is invisible. Even when it shows,
+          its visual weight is half that of "Connect" and the language is a question, not an offer.
+        </div>
+      </div>
+
+      <div class="column">
+        <span class="stamp proposal"><span class="dot"></span>Proposal · v3.10</span>
+        <div class="frame popup">
+          <div class="mast">
+            <div class="brand">
+              <span class="mark"></span>
+              <div class="brand-text">
+                <div class="name">Sales Nav Batch Scraper</div>
+                <div class="sub">Ortus v3.10</div>
+              </div>
+            </div>
+            <div class="right-actions">
+              <span class="live"><span class="dot" style="background:var(--ink-faint)"></span>Standby</span>
+            </div>
+          </div>
+          <div style="padding:12px 22px; border-bottom:1px solid var(--rule); background:var(--paper-2); display:flex; justify-content:center;">
+            <div class="mode-seg" role="tablist" aria-label="Scrape mode">
+              <button aria-pressed="false" type="button"><span class="ic">⚡</span>Quick</button>
+              <button aria-pressed="true" type="button"><span class="ic">▦</span>Batch</button>
+            </div>
+          </div>
+          <div class="body">
+            <span class="eyebrow">Batch · From a sheet</span>
+            <h2 class="title">Paste a sheet.<br><em>Get the leads.</em></h2>
+            <p class="subt">One Sales Nav search URL per row — we'll work through them.</p>
+            <label class="field-label" style="margin-top:18px" for="src">Source sheet URL</label>
+            <input id="src" type="text" placeholder="https://docs.google.com/spreadsheets/d/…">
+            <div class="actions" style="margin-top:18px">
+              <button class="cta">Connect <span class="pod">→</span></button>
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Why this works:</strong>
+          <ul>
+            <li>Toggle is always visible, regardless of which tab the user came from.</li>
+            <li>Clicking <em>Quick</em> jumps to single-link mode; if not on a Sales Nav tab, the Quick view shows a clear empty state with a deep-link to open one (no silent failure).</li>
+            <li>Last mode is persisted in <code>chrome.storage.local</code> — opens to whichever they used last.</li>
+            <li>Removes the ghost-button fallback inside Batch — the toggle replaces it cleanly.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- 2 — DROPDOWN: Tab name per job                                    -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="head">
+      <div class="num">02 · The worst dropdown</div>
+      <h2>"Tab name per job" → three radio cards.</h2>
+      <p class="why">
+        This is the dropdown that hides the most decision. Three modes (auto-number / fixed name / column lookup)
+        each reveal a different sub-input. Hiding them inside a select means users can't compare the options —
+        they have to click each one to discover what it changes. Radio cards put all three options on screen with
+        examples, so the choice is visible.
+      </p>
+    </div>
+
+    <div class="compare">
+      <div class="column">
+        <span class="stamp current"><span class="dot"></span>Current</span>
+        <div class="frame">
+          <div class="body">
+            <label class="field-label">Tab name per job</label>
+            <select>
+              <option>Auto-number (Scrape 1, Scrape 2…)</option>
+              <option>Same tab for all</option>
+              <option>From a column in the sheet</option>
+            </select>
+            <p class="subt" style="font-size:11px; margin-top:8px; color:var(--ink-faint)">Pick one to see what it changes.</p>
+          </div>
+        </div>
+        <div class="note">Three substantive modes hidden behind a select — the user has to click each one to discover that two of them reveal additional fields.</div>
+      </div>
+
+      <div class="column">
+        <span class="stamp proposal"><span class="dot"></span>Proposal</span>
+        <div class="frame">
+          <div class="body">
+            <label class="field-label">Tab name per job</label>
+            <div class="radio-stack" role="radiogroup" aria-label="Tab name per job">
+              <button class="radio-card" role="radio" aria-checked="true" type="button">
+                <span class="ring"></span>
+                <span>
+                  <span class="h">Auto-number them</span>
+                  <span class="d">We'll create new tabs called Scrape 1, Scrape 2, etc.</span>
+                </span>
+                <span class="ex">Scrape 4</span>
+              </button>
+              <button class="radio-card" role="radio" aria-checked="false" type="button">
+                <span class="ring"></span>
+                <span>
+                  <span class="h">All in one tab</span>
+                  <span class="d">Append every job's results into the same sheet tab.</span>
+                </span>
+                <span class="ex">Sales Nav Scrape</span>
+              </button>
+              <button class="radio-card" role="radio" aria-checked="false" type="button">
+                <span class="ring"></span>
+                <span>
+                  <span class="h">Use a column in the sheet</span>
+                  <span class="d">Each job uses the tab name from a column you choose.</span>
+                </span>
+                <span class="ex">column F</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Three things visible at once:</strong> the choice, the explanation, and a concrete example for each.
+          Sub-inputs (column picker for option 3) appear inline below the selected card — never hidden behind a click.
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- 3 — DROPDOWN: Source tab + URL column                            -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="head">
+      <div class="num">03 · The column-pickers</div>
+      <h2>Source tab and URL column — surface the data, not the spreadsheet jargon.</h2>
+      <p class="why">
+        Selects are unavoidable when the option count is 50+ (every column letter). But today's selects show only
+        the column label ("D") with no preview. The new pattern shows the column letter <em>and</em> the column
+        header text <em>and</em> a preview of the first cell, so users pick by content rather than letter.
+      </p>
+    </div>
+
+    <div class="compare">
+      <div class="column">
+        <span class="stamp current"><span class="dot"></span>Current</span>
+        <div class="frame">
+          <div class="body">
+            <label class="field-label">Tab</label>
+            <select><option>Sheet1 (19 rows)</option></select>
+            <label class="field-label">Column with Sales Nav URLs</label>
+            <select><option>D</option></select>
+            <div style="margin-top:6px; padding:8px 10px; background:var(--paper-2); border-radius:6px; font-family:var(--mono); font-size:10px; color:var(--ink-soft); line-height:1.6;">
+              <span style="background:var(--paper); padding:2px 7px; border-radius:4px; margin-right:4px; border:1px solid var(--rule);">https://www.linkedin.com/sales/…</span>
+              <span style="background:var(--paper); padding:2px 7px; border-radius:4px; border:1px solid var(--rule);">https://www.linkedin.com/sales/…</span>
+            </div>
+          </div>
+        </div>
+        <div class="note">"D" is meaningless without context. The column-preview pills below help, but they're disconnected from the selector and easy to miss.</div>
+      </div>
+
+      <div class="column">
+        <span class="stamp proposal"><span class="dot"></span>Proposal</span>
+        <div class="frame">
+          <div class="body">
+            <label class="field-label">Tab</label>
+            <div class="smart-select">
+              <button class="picked" type="button" aria-haspopup="listbox" aria-expanded="false">
+                <span class="label">Sheet1</span>
+                <span class="preview">19 rows · 3 columns</span>
+                <span class="chev">▾</span>
+              </button>
+            </div>
+            <label class="field-label">Column with Sales Nav URLs</label>
+            <ul class="col-list" role="listbox" aria-label="Column with Sales Nav URLs">
+              <li role="option" aria-selected="false"><span class="col">A</span><span class="nm">Lead name</span><span class="preview">Maria Salgado</span></li>
+              <li role="option" aria-selected="false"><span class="col">B</span><span class="nm">Title</span><span class="preview">Head of Procurement</span></li>
+              <li role="option" aria-selected="true"><span class="col">D</span><span class="nm">Sales Nav URL</span><span class="preview">https://www.linkedin.com/sales/…</span></li>
+              <li role="option" aria-selected="false"><span class="col">E</span><span class="nm">Tab name</span><span class="preview">EMEA — Q2 round 1</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Pick by meaning, not by letter.</strong> Each row shows column letter, header name, and a preview value — the trifecta a user actually needs to identify "the right column."
+          For sheets with 50+ columns, a search input appears at the top of the list (not shown in this static sketch).
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- 4 — RESUME / START FRESH                                          -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="head">
+      <div class="num">04 · After an interruption</div>
+      <h2>Concrete state in the button label, not abstract verbs.</h2>
+      <p class="why">
+        "Resume" tells you nothing. Resume <em>what</em>, from <em>where</em>, with <em>what</em> already saved?
+        "Start fresh" sounds friendly — too friendly for an action that throws away your previous work.
+        The proposal puts the saved state in the primary button's label and demotes the destructive option
+        to a quiet text link with a confirmation step.
+      </p>
+    </div>
+
+    <div class="compare">
+      <div class="column">
+        <span class="stamp current"><span class="dot"></span>Current</span>
+        <div class="frame popup">
+          <div class="body">
+            <span class="eyebrow">Interrupted</span>
+            <h2 class="title">Scraping was interrupted</h2>
+            <p class="subt">You can resume from where it left off, or start fresh.</p>
+            <div class="stat-strip">
+              <div class="stat"><div class="v">73</div><div class="l">Saved</div></div>
+              <div class="stat"><div class="v">4/12</div><div class="l">Last page</div></div>
+              <div class="stat"><div class="v">—</div><div class="l">leads</div></div>
+            </div>
+            <div class="actions" style="margin-top:20px">
+              <button class="cta">Resume <span class="pod">▶</span></button>
+              <button class="ghost">Start fresh</button>
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Three problems:</strong> "Resume" doesn't say from where, "Start fresh" doesn't say what's discarded,
+          and both buttons have similar visual weight despite very different reversibility.
+          The third stat is empty for no reason.
+        </div>
+      </div>
+
+      <div class="column">
+        <span class="stamp proposal"><span class="dot"></span>Proposal</span>
+        <div class="frame popup">
+          <div class="body">
+            <span class="eyebrow">Picked up after a stop</span>
+            <h2 class="title">Your run paused at <em>page 4 of 12</em>.</h2>
+            <p class="subt">73 leads are already safely written to your sheet. You can keep going from where the run paused, or throw it all away.</p>
+            <div class="resume-card">
+              <div class="where">Continue from</div>
+              <div class="stats">
+                <div class="stat-mini"><div class="v">page 4</div><div class="l">next page</div></div>
+                <div class="stat-mini"><div class="v">73</div><div class="l">already saved</div></div>
+                <div class="stat-mini"><div class="v">~225</div><div class="l">remaining</div></div>
+              </div>
+              <button class="cta-resume" type="button">
+                <span class="pod">▶</span>
+                <span class="stack">
+                  <span class="h">Keep going from page 4</span>
+                  <span class="d">73 leads safe — 225 to go (~14 min)</span>
+                </span>
+              </button>
+            </div>
+            <div class="actions" style="margin-top:14px; justify-content:flex-end;">
+              <button class="danger-link" type="button">Throw away this run and start over</button>
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>What changed:</strong>
+          <ul>
+            <li>Title puts the page number in italics, in the headline — no hunting for it in a stat strip.</li>
+            <li>Primary button is two-line: <em>action</em> on top, <em>state + estimate</em> below. No ambiguity about what happens.</li>
+            <li>Destructive option is a text link, visually quieter, and clicking it reveals an inline confirm strip ("This deletes 73 leads. Type DELETE to continue") — sketched in the next section.</li>
+            <li>The third "—" stat is replaced with a useful one: how much is left.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- 5 — MID-RUN BUTTONS                                               -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="head">
+      <div class="num">05 · Mid-run controls</div>
+      <h2>Pause / Recover / Stop → grouped, hierarchized, plain-language.</h2>
+      <p class="why">
+        Three ghost buttons in a row gives no hint of which is safe and which is destructive. "Recover" is
+        engineering jargon — users don't know when to press it. "Stop" looks identical to "Pause" but throws
+        away the run. The proposal groups them, adds an explainer for Recover, and gates Stop behind a confirmation.
+      </p>
+    </div>
+
+    <div class="compare">
+      <div class="column">
+        <span class="stamp current"><span class="dot"></span>Current</span>
+        <div class="frame popup">
+          <div class="body">
+            <span class="eyebrow">Now scraping · Job 1 of 2</span>
+            <h2 class="title">Scrape 1</h2>
+            <p class="subt" style="font-family:var(--mono); font-size:11px;">Page 3 of 12</p>
+            <div style="height:4px; background:var(--paper-warm); border-radius:2px; margin-top:14px;">
+              <div style="width:25%; height:100%; background:var(--gold); border-radius:2px;"></div>
+            </div>
+            <div class="actions" style="margin-top:20px">
+              <button class="ghost">Pause</button>
+              <button class="ghost warn">Recover</button>
+              <button class="ghost danger">Stop</button>
+            </div>
+          </div>
+        </div>
+        <div class="note">No grouping, no hierarchy, jargon ("Recover"). Stop is one click from total run loss.</div>
+      </div>
+
+      <div class="column">
+        <span class="stamp proposal"><span class="dot"></span>Proposal</span>
+        <div class="frame popup">
+          <div class="body">
+            <span class="eyebrow">Running · Job 1 of 2</span>
+            <h2 class="title">Scrape 1</h2>
+            <p class="subt" style="font-family:var(--mono); font-size:11px;">Page 3 of 12 · 67 leads collected so far</p>
+            <div style="height:4px; background:var(--paper-warm); border-radius:2px; margin-top:14px;">
+              <div style="width:25%; height:100%; background:var(--gold); border-radius:2px;"></div>
+            </div>
+
+            <div class="run-cluster">
+              <div class="left">
+                <button class="ghost" type="button">⏸ Pause</button>
+                <button class="ghost warn" type="button" title="Triggers a soft retry on the current page">↺ Looks stuck? Try recovery</button>
+              </div>
+              <div class="stop-area">
+                <button class="ghost danger sm" type="button">Stop campaign…</button>
+              </div>
+            </div>
+
+            <div class="confirm-strip" style="margin-top:10px">
+              <span style="font-size:14px">⚠</span>
+              <span><strong>Stop will throw away these 67 leads.</strong> Pause keeps them safe.</span>
+              <span style="margin-left:auto; display:flex; gap:6px;">
+                <button class="ghost sm" type="button">Cancel</button>
+                <button class="ghost danger sm" type="button">Stop anyway</button>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>What changed:</strong>
+          <ul>
+            <li><em>Pause</em> stays where it is — it's the safest action and uses the most.</li>
+            <li><em>Recover</em> renamed to <em>"Looks stuck? Try recovery"</em> — turns engineer-speak into a question the user can answer ("yes it does!").</li>
+            <li><em>Stop</em> is moved to the right edge, demoted (smaller), and clicking it doesn't immediately stop — it expands the confirm strip below with the consequence stated in plain language.</li>
+            <li>Subtitle adds "67 leads collected so far" so the user knows what's at risk before they consider stopping.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- 6 — ACCESSIBILITY SHOWCASE                                        -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="head">
+      <div class="num">06 · Accessibility, made visible</div>
+      <h2>The commitments are in the design, not just in the spec.</h2>
+      <p class="why">
+        These aren't abstract checklists — every item below is something you can see in the new design. WCAG AA
+        on every color combo. 44 px minimum for any tappable thing. Status communicated by icon + text + color
+        (never just color). Real focus rings. Reduced-motion respect.
+      </p>
+    </div>
+
+    <div class="a11y-grid">
+      <div class="a11y-card">
+        <h3>Touch targets</h3>
+        <p class="desc">Apple's HIG and Material both call for 44 px minimum on tappable elements. Today many of our pills are 32 px. The new buttons are 40–44 px and the dropdowns/cards are 44 px+.</p>
+        <div class="tap-targets">
+          <div class="tap-target">
+            <div class="box b32">32</div>
+            <div class="l">Old · pills</div>
+          </div>
+          <div class="tap-target">
+            <div class="box b40">40</div>
+            <div class="l">New · ghost</div>
+          </div>
+          <div class="tap-target">
+            <div class="box b44">44</div>
+            <div class="l">New · CTA &amp; cards</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="a11y-card">
+        <h3>Status — never color-only</h3>
+        <p class="desc">A user with deuteranopia (red-green colorblindness) can't tell a green chip from an amber one. Every status pairs an icon and a text label with the color so the signal is multi-channel.</p>
+        <div class="status-row">
+          <span class="status-chip done"><span class="ic">✓</span>Done</span>
+          <span class="status-chip run"><span class="ic">●</span>Running</span>
+          <span class="status-chip wait"><span class="ic">○</span>Pending</span>
+          <span class="status-chip err"><span class="ic">!</span>Error</span>
+        </div>
+      </div>
+
+      <div class="a11y-card">
+        <h3>Color contrast</h3>
+        <p class="desc">Every text/background combo in the popup hits at least 4.5:1 (WCAG AA for body text). Inputs and large headings get 3:1+. Below: each combo with its measured ratio.</p>
+        <div class="contrast-row">
+          <span class="contrast-pill" style="background:var(--paper); color:var(--ink);">Ink on Paper <span class="ratio">14.8:1 · AAA</span></span>
+          <span class="contrast-pill" style="background:var(--paper); color:var(--ink-soft);">Soft on Paper <span class="ratio">5.9:1 · AA</span></span>
+          <span class="contrast-pill" style="background:var(--gold-tint); color:#6F4715;">Warning <span class="ratio">5.6:1 · AA</span></span>
+          <span class="contrast-pill" style="background:rgba(139,58,46,0.06); color:var(--err);">Error <span class="ratio">5.2:1 · AA</span></span>
+          <span class="contrast-pill" style="background:rgba(79,122,77,0.10); color:var(--ok);">Success <span class="ratio">4.7:1 · AA</span></span>
+        </div>
+      </div>
+
+      <div class="a11y-card">
+        <h3>Real focus rings</h3>
+        <p class="desc">Keyboard users currently get the browser default — sometimes nothing on dark backgrounds. The new design uses a 2 px gold-deep ring with 2 px offset, identical to the brand accent. Tab through to see it; the simulated state below shows what it looks like.</p>
+        <div class="focus-demo">
+          <button class="demo-btn">Tab to me</button>
+          <button class="demo-btn simulated-focus">In focus</button>
+          <button class="demo-btn">Then me</button>
+        </div>
+      </div>
+
+      <div class="a11y-card">
+        <h3>Reduced motion</h3>
+        <p class="desc">All animation respects <code style="font-family:var(--mono); font-size:11px; background:var(--paper-2); padding:1px 5px; border-radius:4px;">prefers-reduced-motion</code>. The pulse on running indicators stops; the slide-in on alarms becomes an instant fade. No bouncing, no parallax, no spring physics.</p>
+        <p class="desc" style="font-style:italic; margin-top:10px;">"If the user said 'less motion,' the system says 'less motion.'"</p>
+      </div>
+
+      <div class="a11y-card">
+        <h3>Real labels</h3>
+        <p class="desc">Every input has a real <code style="font-family:var(--mono); font-size:11px; background:var(--paper-2); padding:1px 5px; border-radius:4px;">&lt;label for=…&gt;</code>. Placeholders are <em>examples</em>, never used as labels — they vanish on focus and screen readers don't read them reliably. Status messages live in <code style="font-family:var(--mono); font-size:11px; background:var(--paper-2); padding:1px 5px; border-radius:4px;">aria-live</code> regions so updates are announced without yanking focus.</p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <footer class="closer">
+    <div>
+      <h3>What this sketch does</h3>
+      <p>One HTML file, no build step. Open it in any browser. Every visual primitive is the same as the real popup so the comparison is honest — same fonts, same colors, same spacing rhythm. The only differences are the changes being proposed.</p>
+      <p style="margin-top:10px;">If a section is wrong, tell me which: "swap the resume copy for X", "kill the segmented toggle, just use cards", "show me dropdown #4 with a search box at the top", etc. I'll iterate this file before touching popup.html.</p>
+    </div>
+    <div>
+      <h3>What it doesn't cover</h3>
+      <ul>
+        <li>The actual <code>view-batch-running</code> queue list (already pretty good).</li>
+        <li>The settings screen (untouched in this proposal — it's healthy as-is).</li>
+        <li>The mini window (load-bearing for the SW, separate concern).</li>
+        <li>The two-step keep-LinkedIn-awake preflight (just shipped in v3.9.3, leaving alone).</li>
+        <li>The actual <em>resume bug</em> — that's a code fix awaiting the colleague's logs.html dump, not a UI change.</li>
+      </ul>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>

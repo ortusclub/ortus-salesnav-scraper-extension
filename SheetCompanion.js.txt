@@ -9,12 +9,14 @@ function doPost(e) {
       case "updateJob": return handleUpdateJob(p);
       case "writeBackLink": return handleWriteBackLink(p);
       case "checkSharing": return handleCheckSharing(p);
+      case "getKnownProfiles": return handleGetKnownProfiles(p);
+      case "writeLog": return handleWriteLog(p);
       default: return jr({success:false, error:"Unknown: "+p.action});
     }
   } catch(err) { return jr({success:false, error:err.message}); }
 }
 
-function doGet() { return jr({status:"ok",version:"2.3",actions:["writeProfiles","readTabs","readColumns","readJobs","updateJob","writeBackLink","checkSharing"]}); }
+function doGet() { return jr({status:"ok",version:"2.5",actions:["writeProfiles","readTabs","readColumns","readJobs","updateJob","writeBackLink","checkSharing","getKnownProfiles","writeLog"]}); }
 
 /* Run this once from the editor (▶ Run) to authorize the DriveApp scope.
  * Safe to run with no arguments — does nothing destructive, just touches DriveApp
@@ -61,10 +63,10 @@ function handleWrite(p) {
   var tab=p.tabName||"Sheet1";
   var sh=ss.getSheetByName(tab); if(!sh) sh=ss.insertSheet(tab);
   if(sh.getLastRow()===0){
-    var h=["Record ID","First Name","Last Name","Domain","Priority (Company)","Priority (Role)","Priority","Lead Status","Company Name","Job Title","Linkedin Bio","First Phone","First Phone Value","Phone Number","Whatsapp Link","Mobile Phone Number","Email","Email Verification","LinkedIn Membership ID","Location","Notes","Secondary Email","Hubspot URL","Ortus Members","Current Tag","Open Profile","Premium","Linkedin First Connection","Client Lead Status","Apollo Contact ID","ID Check"];
+    var h=["Record ID","First Name","Last Name","Domain","Priority (Company)","Priority (Role)","Priority","Lead Status","Company Name","Job Title","Linkedin Bio","First Phone","First Phone Validation","Phone Number","Whatsapp Link","Mobile Phone Number","Email","Email Verification","LinkedIn Membership ID","Location","Notes","Secondary Emails","Hubspot URL","Ortus Membership","Current Tag","Open Profile","Premium Account","Linkedin First Connections","Client Lead Status","Apollo Contact ID","Additional email addresses"];
     sh.appendRow(h);sh.getRange(1,1,1,h.length).setFontWeight("bold");sh.setFrozenRows(1);
   }
-  var rows=p.profiles.map(function(r){return["",r.firstName||"",r.lastName||"","","","","","",r.company||"",r.jobTitle||"",r.publicUrl||r.profileUrl||"","","","","","",r.linkedinEmail||"","",(r.membershipId||"").toString(),r.location||"","","","","","",r.openProfile||"No",r.premium||"Unknown","","","",r.idUnverified==="?"?"?":"OK"]});
+  var rows=p.profiles.map(function(r){return["",r.firstName||"",r.lastName||"","","","","","",r.company||"",r.jobTitle||"",r.publicUrl||r.profileUrl||"","","","","","",r.linkedinEmail||"","",(r.membershipId||"").toString(),r.location||"","","","","","",r.openProfile||"No",r.premium||"Unknown","","","",""]});
   var start=sh.getLastRow()+1;
   sh.getRange(start,1,rows.length,rows[0].length).setValues(rows);
   return jr({success:true,rowsWritten:rows.length});
@@ -147,3 +149,163 @@ function handleUpdateJob(p) {
 }
 
 function jr(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON)}
+
+/* Read the destination tab's LinkedIn Membership ID + Linkedin Bio columns
+ * and return the raw values. Normalization happens client-side so we can
+ * iterate on rules without redeploying.
+ *
+ * Returns: {success, ids:[...], tokens:[...], hasIdCol, hasUrlCol, error?}
+ */
+function handleGetKnownProfiles(p) {
+  if (!p.sheetUrl) return jr({success:false, error:"Missing sheetUrl"});
+  if (!p.tabName) return jr({success:false, error:"Missing tabName"});
+  try {
+    var ss = SpreadsheetApp.openByUrl(p.sheetUrl);
+    var sheet = ss.getSheetByName(p.tabName);
+    if (!sheet) return jr({success:true, ids:[], tokens:[], hasIdCol:false, hasUrlCol:false});
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) return jr({success:true, ids:[], tokens:[], hasIdCol:false, hasUrlCol:false});
+
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var idColIdx = -1, urlColIdx = -1;
+    var ID_HEADERS = ["linkedin membership id", "membership id", "linkedin id"];
+    var URL_HEADERS = ["linkedin bio", "linkedin url", "profile url", "sales nav url"];
+    for (var i = 0; i < headers.length; i++) {
+      var h = String(headers[i] || "").trim().toLowerCase();
+      if (idColIdx === -1 && ID_HEADERS.indexOf(h) !== -1) idColIdx = i;
+      if (urlColIdx === -1 && URL_HEADERS.indexOf(h) !== -1) urlColIdx = i;
+    }
+
+    var ids = [], tokens = [];
+    if (idColIdx !== -1) {
+      var idVals = sheet.getRange(2, idColIdx + 1, lastRow - 1, 1).getValues();
+      for (var j = 0; j < idVals.length; j++) {
+        var v = String(idVals[j][0] || "").trim();
+        if (v) ids.push(v);
+      }
+    }
+    if (urlColIdx !== -1) {
+      var urlVals = sheet.getRange(2, urlColIdx + 1, lastRow - 1, 1).getValues();
+      for (var k = 0; k < urlVals.length; k++) {
+        var u = String(urlVals[k][0] || "").trim();
+        if (u) tokens.push(u);
+      }
+    }
+    return jr({success:true, ids:ids, tokens:tokens, hasIdCol:idColIdx !== -1, hasUrlCol:urlColIdx !== -1});
+  } catch (e) {
+    return jr({success:false, error:String(e.message || e)});
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   LOGGING — per-attempt rows in __logs tab on Antonio's internal sheet.
+   Hardcoded destination: scraper always writes diagnostics here, no
+   matter which destination sheet the actual leads land in.
+   ────────────────────────────────────────────────────────────────────── */
+var LOG_SHEET_URL = "https://docs.google.com/spreadsheets/d/1MgWFXNVAH1-Xps7UgmrqFx4EYicxpzt9QfXQMfCRB8o/edit";
+var LOG_TAB_NAME = "__logs";
+var LOG_HEADERS = [
+  "ts","mode","jobId","searchUrl","pageNum","attempt",
+  "rawCount","afterDedup","skippedDupes","msExtract","tabVisible","error","scraperVer"
+];
+
+function handleWriteLog(p) {
+  try {
+    var ss = SpreadsheetApp.openByUrl(LOG_SHEET_URL);
+    var sh = ss.getSheetByName(LOG_TAB_NAME);
+    if (!sh) {
+      sh = ss.insertSheet(LOG_TAB_NAME);
+      sh.appendRow(LOG_HEADERS);
+      sh.getRange(1, 1, 1, LOG_HEADERS.length).setFontWeight("bold");
+      sh.setFrozenRows(1);
+    }
+    var row = [];
+    for (var i = 0; i < LOG_HEADERS.length; i++) {
+      var k = LOG_HEADERS[i];
+      row.push(p[k] == null ? "" : String(p[k]));
+    }
+    sh.appendRow(row);
+    return jr({success:true});
+  } catch (e) {
+    return jr({success:false, error:String(e.message || e)});
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   ONOPEN MENU — adds "Ortus Tools" menu with admin actions.
+   ────────────────────────────────────────────────────────────────────── */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("Ortus Tools")
+    .addItem("Delete all other tabs…", "deleteOtherTabs_")
+    .addItem("Clear log tab", "clearLogTab_")
+    .addToUi();
+}
+
+function deleteOtherTabs_() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActive();
+  var sheets = ss.getSheets();
+  if (sheets.length <= 1) {
+    ui.alert("Only 1 tab in this sheet — nothing to delete.");
+    return;
+  }
+  var active = ss.getActiveSheet();
+  var defaultKeep = active ? active.getName() : sheets[0].getName();
+  /* Step 1: ask which tab to KEEP */
+  var resp = ui.prompt(
+    "Keep which tab?",
+    "Type the EXACT name of the tab to KEEP. All others will be deleted.\n\n" +
+    "Default (current tab): " + defaultKeep + "\n\n" +
+    "Leave blank to use the default.",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  var keepName = String(resp.getResponseText() || "").trim() || defaultKeep;
+  var keepSheet = ss.getSheetByName(keepName);
+  if (!keepSheet) {
+    ui.alert('No tab named "' + keepName + '" — aborted. Check the spelling and try again.');
+    return;
+  }
+  /* Step 2: enumerate targets, show count + sample names, confirm */
+  var targets = [];
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName() !== keepName) targets.push(sheets[i]);
+  }
+  var sample = targets.slice(0, 8).map(function(s){return s.getName();}).join(", ");
+  var more = targets.length > 8 ? " (+" + (targets.length - 8) + " more)" : "";
+  var confirm = ui.alert(
+    "Delete " + targets.length + " tabs?",
+    'This will keep "' + keepName + '" and delete:\n\n' + sample + more +
+    "\n\nThis cannot be undone. Continue?",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (confirm !== ui.Button.OK) return;
+  /* Step 3: nuke */
+  var deleted = 0, failed = 0, errs = [];
+  for (var k = 0; k < targets.length; k++) {
+    try { ss.deleteSheet(targets[k]); deleted++; }
+    catch (e) { failed++; errs.push(targets[k].getName() + ": " + e.message); }
+  }
+  var msg = "Deleted " + deleted + " tab" + (deleted === 1 ? "" : "s") + ".";
+  if (failed > 0) msg += "\n\n" + failed + " failed:\n" + errs.slice(0, 5).join("\n");
+  ui.alert(msg);
+}
+
+function clearLogTab_() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(LOG_TAB_NAME);
+  if (!sh) { ui.alert('No "' + LOG_TAB_NAME + '" tab found.'); return; }
+  var lastRow = sh.getLastRow();
+  if (lastRow <= 1) { ui.alert("Log tab is already empty."); return; }
+  var resp = ui.alert(
+    "Clear " + (lastRow - 1) + " log rows?",
+    "Keeps the header row. Cannot be undone.",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp !== ui.Button.OK) return;
+  sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).clearContent();
+  ui.alert("Cleared " + (lastRow - 1) + " rows.");
+}

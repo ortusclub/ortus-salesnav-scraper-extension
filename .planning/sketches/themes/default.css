@@ -1,0 +1,66 @@
+/* Theme: Ortus club editorial — derived from LinkedIn DM Assistant
+ * Warm paper + ink + gold. Newsreader serif, Geist sans, Geist Mono. */
+
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  color-scheme: light;
+
+  /* Ink scale — copy from DM Assistant */
+  --ink:        #16140F;
+  --ink-2:      #2C2A24;
+  --ink-soft:   #6B6557;
+  --ink-faint:  #A39B89;
+
+  /* Paper scale */
+  --paper:      #FDFBF7;
+  --paper-2:    #F6F2E9;
+  --paper-warm: #F1ECDF;
+  --paper-shell: #ECE5D2;
+  --paper-shell-2: #DCD3BC;
+
+  /* Rules / hairlines */
+  --rule:       #E5DFD0;
+  --rule-2:     #C9C0AC;
+
+  /* Gold — sole accent */
+  --gold:       #C99046;
+  --gold-deep:  #9B6A26;
+  --gold-warm:  #F0CE89;
+  --gold-tint:  #F6E8C8;
+
+  /* Semantic — sparingly */
+  --ok:         #4F7A4D;
+  --err:        #8B3A2E;
+  --anon:       #6B6557; /* anonymized leads — same as ink-soft, intentional */
+
+  /* Type stacks */
+  --serif:      "Newsreader", "Charter", "Iowan Old Style", Georgia, serif;
+  --sans:       "Geist", "InterDisplay", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --mono:       "Geist Mono", "JetBrains Mono", "SFMono-Regular", monospace;
+
+  /* Motion */
+  --ease:       cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Shape */
+  --radius-popup: 16px;
+  --radius-card:  10px;
+  --radius-input: 6px;
+  --radius-pill:  999px;
+}
+
+/* Reset bits used by sketches */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+button { font: inherit; cursor: pointer; }
+h1, h2, h3, h4, p { margin: 0; }
+
+/* Newsprint noise overlay — applied to .popup */
+.popup-noise::before {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.32  0 0 0 0 0.27  0 0 0 0 0.18  0 0 0 0.07 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+}
