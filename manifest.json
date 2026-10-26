@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Sales Nav Batch Scraper",
-  "version": "3.14.1",
-  "description": "Per-page diagnostic logging to a hardcoded __logs tab (raw count, after-dedup, ms-extract, tabVisible, retry path) so we can diagnose lead-skipping without colleague logs. UI trim: removed redundant step eyebrows + idle Standby badge. Apps Script: 'Ortus Tools' menu adds Delete-all-other-tabs + Clear-log-tab. Headers updated: First Phone Validation, Secondary Emails, Ortus Membership, Premium Account, Linkedin First Connections, Additional email addresses (blank).",
+  "version": "3.15.2",
+  "description": "Open Profile check: Premium leads on each page are re-checked in one batch salesApiProfiles lookup (search results always report Open Profile = false). Per-page diagnostic logging to a hardcoded __logs tab (raw count, after-dedup, ms-extract, tabVisible, retry path) so we can diagnose lead-skipping without colleague logs. UI trim: removed redundant step eyebrows + idle Standby badge. Apps Script: 'Ortus Tools' menu adds Delete-all-other-tabs + Clear-log-tab. Headers updated: First Phone Validation, Secondary Emails, Ortus Membership, Premium Account, Linkedin First Connections, Additional email addresses (blank).",
   "permissions": [
     "activeTab",
     "tabs",
@@ -18,8 +18,12 @@
   ],
   "content_scripts": [
     {
-      "matches": ["https://www.linkedin.com/*"],
-      "js": ["interceptor.js"],
+      "matches": [
+        "https://www.linkedin.com/*"
+      ],
+      "js": [
+        "interceptor.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     }

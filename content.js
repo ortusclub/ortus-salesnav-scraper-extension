@@ -17,13 +17,20 @@
    * Each call re-runs this IIFE, creating duplicate listeners.
    * If we already loaded, bail out — the first closure handles everything.
    * Its DOM queries (harvestVisible, getPageInfo etc) always reflect current page. */
-  if (window.__ortusContentLoaded) {
+  /* v3.15.2: after the extension is reloaded, the old copy stays in the tab but can
+   * no longer receive messages ("orphaned"), while its flag still blocks the new copy.
+   * Only bail out if the earlier copy is still connected to the extension. */
+  var __prevAlive = false;
+  try { __prevAlive = typeof window.__ortusContentAlive === 'function' && window.__ortusContentAlive(); } catch(e) {}
+  if (window.__ortusContentLoaded && __prevAlive) {
     console.log('[Ortus] Guard: already loaded, skipping re-registration (injection #' + (window.__ortusInjectionCount || 1) + ')');
     window.__ortusInjectionCount = (window.__ortusInjectionCount || 1) + 1;
     return;
   }
+  if (window.__ortusContentLoaded) console.log('[Ortus] Guard: previous copy is orphaned (extension reloaded) — taking over');
   window.__ortusContentLoaded = true;
   window.__ortusInjectionCount = 1;
+  window.__ortusContentAlive = function() { try { return !!(chrome.runtime && chrome.runtime.id); } catch(e) { return false; } };
 
   /* Increase resource timing buffer */
   try { performance.setResourceTimingBufferSize(500); } catch(e) {}
@@ -706,8 +713,107 @@
       }
     } catch(e) { console.log('[Ortus] Enrichment apply error:', e.message); }
 
+    /* v3.15: search results always report openLink=false, so re-check Premium leads */
+    try { await verifyOpenProfiles(result); }
+    catch(e) { console.log('[Ortus] Open Profile check error:', e.message); }
+
     console.log('[Ortus] DONE: ' + result.length + ' unique profiles from ' + attempt + ' scroll attempts (expected ' + expectedTotal + ')');
     return result;
+  }
+
+  /* ═══ v3.15 OPEN PROFILE CHECK ═══
+   * The openLink flag in salesApiLeadSearch is always false. The real value is
+   * memberBadges.openLink on the lead profile. salesApiProfiles accepts a batch
+   * (ids=List(...)), so all Premium leads on a page are checked in ONE request.
+   * Each id needs profileId + authType + authToken from the lead URL / entityUrn.
+   * Only Premium members can have an Open Profile, so non-Premium leads are skipped. */
+  var OPEN_CHECK_BATCH = 25;
+
+  function leadKeyFor(p) {
+    var m = (p.profileUrl || '').match(/\/sales\/(?:lead|people)\/([^/?#]+)/);
+    if (m) {
+      var parts = decodeURIComponent(m[1]).split(',');
+      if (parts.length === 3 && parts[2]) return parts;
+    }
+    var enrich = p.membershipId && apiEnrichCache[p.membershipId];
+    if (enrich && enrich.leadKey) {
+      var ek = enrich.leadKey.split(',');
+      if (ek.length === 3 && ek[2]) return ek;
+    }
+    return null;
+  }
+
+  async function verifyOpenProfiles(result) {
+    var csrf = (document.cookie.match(/JSESSIONID="?([^";]+)/) || [])[1];
+    if (!csrf) { console.log('[Ortus] Open Profile check skipped: no JSESSIONID'); return; }
+
+    var todo = [];
+    for (var i = 0; i < result.length; i++) {
+      if (result[i].premium !== 'Yes') continue;
+      var key = leadKeyFor(result[i]);
+      if (key) todo.push({ p: result[i], id: key[0], type: key[1], tok: key[2] });
+      else { result[i].openProfile = 'Unknown'; console.log('[Ortus] Open Profile check: no lead key for ' + result[i].name); }
+    }
+    if (!todo.length) { console.log('[Ortus] Open Profile check: no Premium leads on this page'); return; }
+
+    var checked = 0, open = 0;
+    for (var b = 0; b < todo.length; b += OPEN_CHECK_BATCH) {
+      var batch = todo.slice(b, b + OPEN_CHECK_BATCH);
+      var ids = batch.map(function(t) {
+        return '(profileId:' + t.id + ',authType:' + t.type + ',authToken:' + encodeURIComponent(t.tok) + ')';
+      }).join(',');
+      var url = 'https://www.linkedin.com/sales-api/salesApiProfiles?ids=List(' + ids + ')' +
+                '&decoration=%28entityUrn%2CfullName%2CmemberBadges%29';
+
+      /* Never let this lookup hold up extractProfiles (background times out at 60s) */
+      var ctrl = new AbortController();
+      var abortTimer = setTimeout(function() { ctrl.abort(); }, 15000);
+      var res;
+      try {
+        res = await fetch(url, {
+          credentials: 'include',
+          signal: ctrl.signal,
+          headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0' }
+        });
+      } catch(fe) {
+        console.log('[Ortus] Open Profile check: request failed (' + fe.message + ')');
+        batch.forEach(function(t) { t.p.openProfile = 'Unknown'; });
+        continue;
+      } finally { clearTimeout(abortTimer); }
+      if (res.status === 429 || res.status === 999) {
+        console.log('[Ortus] Open Profile check: throttled (' + res.status + '), stopping');
+        chrome.runtime.sendMessage({ action: 'throttleDetected', status: res.status, retryAfter: 0 });
+        for (var r = b; r < todo.length; r++) todo[r].p.openProfile = 'Unknown';
+        return;
+      }
+      if (res.status !== 200) {
+        console.log('[Ortus] Open Profile check: batch failed HTTP ' + res.status);
+        batch.forEach(function(t) { t.p.openProfile = 'Unknown'; });
+        continue;
+      }
+
+      var j = await res.json();
+      var byId = {};
+      var found = Object.values(j.results || {});
+      for (var f = 0; f < found.length; f++) {
+        var fm = (found[f].entityUrn || '').match(/\(([^,)]+)/);
+        if (fm) byId[fm[1]] = found[f];
+      }
+      batch.forEach(function(t) {
+        var prof = byId[t.id];
+        if (!prof) { t.p.openProfile = 'Unknown'; return; }
+        var badges = prof.memberBadges || {};
+        t.p.openProfile = badges.openLink ? 'Yes' : 'No';
+        if (badges.premium === false) t.p.premium = 'No';
+        checked++;
+        if (badges.openLink) open++;
+      });
+      var errCount = Object.keys(j.errors || {}).length;
+      if (errCount) console.log('[Ortus] Open Profile check: ' + errCount + ' lead(s) errored in batch', j.errors);
+
+      if (b + OPEN_CHECK_BATCH < todo.length) await sleep(sd(1500, 4000));
+    }
+    console.log('[Ortus] Open Profile check: ' + checked + '/' + todo.length + ' Premium leads checked, ' + open + ' open');
   }
 
   /* ── Empty State Detection ── */

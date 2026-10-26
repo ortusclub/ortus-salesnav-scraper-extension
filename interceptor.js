@@ -18,8 +18,11 @@
           var urn = el.objectUrn || '';
           var m = urn.match(/urn:li:member:(\d+)/);
           if (!m) continue;
+          /* v3.15 — keep "profileId,authType,authToken" from entityUrn for the Open Profile lookup */
+          var lk = (el.entityUrn || '').match(/\(([^)]+)\)/);
           extracted.elements.push({
             memberId: m[1], openLink: !!el.openLink, premium: !!el.premium,
+            leadKey: lk ? lk[1] : '',
             company: (el.currentPositions && el.currentPositions[0]) ? el.currentPositions[0].companyName || '' : '',
             title: (el.currentPositions && el.currentPositions[0]) ? el.currentPositions[0].title || '' : '',
             fullName: el.fullName || '', location: el.geoRegion || ''

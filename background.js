@@ -506,6 +506,8 @@ async function runSinglePage(){
     var __t0=Date.now();
     var __vis='unknown';
     getTabVisibility(tid).then(function(v){__vis=v;}); /* fire-and-forget, never blocks */
+    /* v3.15.2: make sure a live content script is in the tab (guard skips it if already there) */
+    try{await chrome.scripting.executeScript({target:{tabId:tid},files:['content.js']});}catch(e){addLog('warn','Inject content.js failed: '+e.message);}
     var r=await tabMsg(tid,{action:'extractProfiles',slow:SLOW_MODE});
     var __ms=Date.now()-__t0;
     /* Post-extraction integrity check — uses pi.url from the result we already have.
@@ -540,13 +542,16 @@ async function runSinglePage(){
     await tabMsg(tid,{action:'goToNextPage'});await waitNav(tid);runSinglePage();
   }catch(err){
     state.errors.push({page:pg,error:err.message||String(err)});
+    addLog('error','Page '+pg+' failed: '+(err.message||String(err)));
     /* Check if it's a tab-closed / fatal error */
     if(err.message&&(err.message.indexOf('Tab closed')!==-1||err.message.indexOf('No tab')!==-1||err.message.indexOf('disconnected')!==-1)){
       notifyError('Scraping interrupted on page '+pg+'. You can resume from the extension.');
       saveState();stopSaveTimer();state.isRunning=false;bc();return;
     }
     if(state.isRunning){state.currentPage=pg+1;await new Promise(function(r){setTimeout(r,2000);});
-      try{await tabMsg(tid,{action:'navigateToPage',page:state.currentPage,baseUrl:state.salesNavUrl});await waitNav(tid);runSinglePage();}catch(e){
+      try{try{await chrome.scripting.executeScript({target:{tabId:tid},files:['content.js']});}catch(ie){}
+        await tabMsg(tid,{action:'navigateToPage',page:state.currentPage,baseUrl:state.salesNavUrl});await waitNav(tid);runSinglePage();}catch(e){
+        addLog('error','Recovery to page '+state.currentPage+' failed: '+(e.message||String(e)));
         notifyError('Scraping stopped due to error on page '+pg+'. You can resume from the extension.');
         saveState();stopSaveTimer();state.isRunning=false;bc();
       }}
